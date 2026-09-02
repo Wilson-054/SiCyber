@@ -4,7 +4,7 @@
   export type DeterminedLevel = 'beginner' | 'intermediate' | 'advanced'
 
   import type { SqliCriteria } from "./A05/Sql/sqli-evaluator";
-  import type { AccessControlCriteria } from "./A01/lab2/access-control-evaluator";
+  //import type { AccessControlCriteria } from "../Quiz/A01/lab2/access control evaluatrp";
   import type { MisconfigDebugCriteria } from "@/../utils/Quiz/misconfig-evaluator";
   import type { AuthWeakTokenDbCriteria } from "@/../utils/Quiz/auth-evaluator";
   import type { CryptoWeakHashCriteria } from "@/../utils/Quiz/crypto-evaluator";
@@ -70,7 +70,6 @@ import type { StoredXssCriteria } from "./A05/xss/xss-evaluator";
   };
   export type ExerciseCriteria =
     | SqliCriteria
-    | AccessControlCriteria
     | MisconfigDebugCriteria
     | AuthWeakTokenDbCriteria
     | CryptoWeakHashCriteria
