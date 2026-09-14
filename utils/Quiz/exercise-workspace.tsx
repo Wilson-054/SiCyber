@@ -7,6 +7,7 @@ import HintPanel from "@/../utils/Quiz/hint-panel";
 import SqliLoginSimulator from "./A05/Sql/sqli-login-simulator";
 import IdorProfileSimulator from "./A01/lab1/idor-profile-simulator";
 import CsrfTransferSimulator from "./A01/lab2/CRSF-simulator-simulator";
+import  SsrfUrlImportSimulator from "./A01/lab3/ssrf-url-import-simulator";
 import SearchUnionSimulator from "@/../utils/Quiz/search-union-simulator";
 import NumericIdSimulator from "@/../utils/Quiz/numeric-id-simulator";
 import ReconsiderPrompt from "@/../utils/Quiz/ReconsiderPrompt";
@@ -194,6 +195,9 @@ export default function ExerciseWorkspace({
       )}
       {criteria.type === "csrf_fund_transfer" && (
         <CsrfTransferSimulator {...simulatorProps} criteria={criteria} />
+      )}
+     {criteria.type === "ssrf_url_import_simulation" && (
+        <SsrfUrlImportSimulator {...simulatorProps} criteria={criteria} />
       )}
     </div>
   );
