@@ -12,7 +12,7 @@
   import type { MisconfigDockerSocketCriteria } from "./docker-socket-evaluator";
   import type { XxeFileReadCriteria } from "./xxe-evaluator";
 import type { CookieTheftCriteria } from "./A02/cookie-theft-evaluator";
-
+import type { SsrfUrlImportCriteria } from "@/../utils/Quiz/A01/lab3/ssrf-url-import-evaluator";
   import type { MisconfigOpenBucketCriteria } from "./cloud-storage-evaluator";
   import type { MisconfigDockerEscapeCriteria } from "./docker-escape-evaluator";
 import type { ErrorDebugExposureCriteria } from "@/../utils/Quiz/A10/error-debug-exposure-evaluator";
@@ -85,4 +85,4 @@ import type { StoredXssCriteria } from "./A05/xss/xss-evaluator";
     MisconfigDockerEscapeCriteria| ErrorDebugExposureCriteria
     | SessionFixationCriteria| StoredXssCriteria
   | CookieTheftCriteria | IdorProfileCriteria
-  | CsrfTransferCriteria;
+  | CsrfTransferCriteria | SsrfUrlImportCriteria;
