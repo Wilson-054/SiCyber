@@ -1,3 +1,4 @@
+// Save as: app/components/Materi/MarkCompleteButton.tsx (replaces existing file)
 "use client";
 
 import { useState, useTransition } from "react";
@@ -6,8 +7,10 @@ import {
   getNextRecommendedCategoryAction,
 } from "@/app/materi/actions";
 import NextCategoryPrompt from "@/app/components/Materi/NextCategoryPrompt";
+import CertificateAwardedModal from "@/app/components/Materi/CertificateAwardedModal";
 
 type RecommendedCategory = { id: string; code: string; name: string } | null;
+type AwardedCertification = { code: string; title: string; type: "subtopic" | "category" };
 
 export default function MarkCompleteButton({
   materialId,
@@ -27,13 +30,20 @@ export default function MarkCompleteButton({
   const [isPending, startTransition] = useTransition();
   const [showPrompt, setShowPrompt] = useState(false);
   const [recommended, setRecommended] = useState<RecommendedCategory>(null);
+  const [newCertifications, setNewCertifications] = useState<AwardedCertification[]>([]);
+  const [showCertModal, setShowCertModal] = useState(false);
 
   function handleClick() {
     setError(null);
     startTransition(async () => {
       try {
-        await markMaterialComplete(materialId, categoryId, categoryCode);
+        const result = await markMaterialComplete(materialId, categoryId, categoryCode);
         setCompleted(true);
+
+        if (result.newCertifications.length > 0) {
+          setNewCertifications(result.newCertifications);
+          setShowCertModal(true);
+        }
 
         if (isLastMaterial && !initialCompleted) {
           const next = await getNextRecommendedCategoryAction(categoryId);
@@ -61,7 +71,16 @@ export default function MarkCompleteButton({
       </button>
       {error && <p className="text-xs text-[#F85149]">{error}</p>}
 
-      {showPrompt && (
+      {/* Modal sertifikat ditampilkan lebih dulu; prompt kategori berikutnya
+          menunggu sampai modal sertifikat ditutup supaya tidak tumpang tindih. */}
+      {showCertModal && (
+        <CertificateAwardedModal
+          certifications={newCertifications}
+          onClose={() => setShowCertModal(false)}
+        />
+      )}
+
+      {showPrompt && !showCertModal && (
         <NextCategoryPrompt
           recommended={recommended}
           onClose={() => setShowPrompt(false)}

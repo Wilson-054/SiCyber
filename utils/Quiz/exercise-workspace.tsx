@@ -13,7 +13,9 @@ import NumericIdSimulator from "@/../utils/Quiz/numeric-id-simulator";
 import ReconsiderPrompt from "@/../utils/Quiz/ReconsiderPrompt";
 import type { SqliCriteria } from "./A05/Sql/sqli-evaluator"
 import SessionFixationSimulator from "./A07/session-fixation-simulator";
-import type { ProgressCounters } from "@/../utils/Quiz/exercise-progress";
+//import type { ProgressCounters } from "@/app/actions/exercise-progress";
+
+import type { ProgressCounters } from "../Quiz/exercise-progress"
 import DockerSocketSimulator from "@/../utils/Quiz/docker-socket-simulator";
 import XxeSimulator from "@/../utils/Quiz/xxe-simulator";
 import CloudStorageSimulator from "@/../utils/Quiz/cloud-storage-simulator";
@@ -30,6 +32,7 @@ import StoredXssSimulator from "./A05/xss/xss-simulator";
 import CookieTheftSimulator from "./A02/cookie-theft-simulator";
 import { getNextRecommendedCategoryAction } from "@/app/materi/actions";
 import NextCategoryPrompt from "@/app/components/Materi/NextCategoryPrompt";
+import CertificateAwardedModal from "@/app/components/Materi/CertificateAwardedModal";
 
 type Hint = { id: string; hint_order: number; content: string };
 type Feedback = {
@@ -39,6 +42,7 @@ type Feedback = {
   implementation_notes: string | null;
 };
 type RecommendedCategory = { id: string; code: string; name: string } | null;
+type AwardedCertification = { code: string; title: string; type: "subtopic" | "category" };
 
 const REDIRECT_DELAY_SECONDS = 15;
 
@@ -69,10 +73,17 @@ export default function ExerciseWorkspace({
   const [redirectSecondsLeft, setRedirectSecondsLeft] = useState<number | null>(null);
   const [showCategoryPrompt, setShowCategoryPrompt] = useState(false);
   const [recommendedCategory, setRecommendedCategory] = useState<RecommendedCategory>(null);
+  const [newCertifications, setNewCertifications] = useState<AwardedCertification[]>([]);
+  const [showCertModal, setShowCertModal] = useState(false);
 
   const handleCountersUpdate = (c: ProgressCounters) => {
     const justCompleted = c.exercise_status === "completed" && counters.exercise_status !== "completed";
     setCounters((prev) => ({ ...prev, ...c }));
+
+    if (c.newCertifications && c.newCertifications.length > 0) {
+      setNewCertifications(c.newCertifications);
+      setShowCertModal(true);
+    }
 
     if (!justCompleted) return;
 
@@ -135,7 +146,16 @@ export default function ExerciseWorkspace({
 
       {showReconsider && <ReconsiderPrompt categoryCode={categoryCode} onDismiss={() => setShowReconsider(false)} />}
 
-      {showCategoryPrompt && (
+      {/* Sertifikat ditampilkan lebih dulu; prompt kategori berikutnya
+          menunggu sampai modal sertifikat ditutup supaya tidak tumpang tindih. */}
+      {showCertModal && (
+        <CertificateAwardedModal
+          certifications={newCertifications}
+          onClose={() => setShowCertModal(false)}
+        />
+      )}
+
+      {showCategoryPrompt && !showCertModal && (
         <NextCategoryPrompt
           recommended={recommendedCategory}
           onClose={() => setShowCategoryPrompt(false)}

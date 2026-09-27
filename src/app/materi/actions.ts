@@ -1,13 +1,15 @@
+// Save as: app/materi/actions.ts (replaces existing file)
 "use server";
 
 import { createClient } from "@/../utils/supabase/server";
 import { revalidatePath } from "next/cache";
+import { checkAndAwardCertifications, type AwardedCertification } from "@/../utils/certifications";
 
 export async function markMaterialComplete(
   materialId: string,
   categoryId: string,
   categoryCode: string
-) {
+): Promise<{ newCertifications: AwardedCertification[] }> {
   const supabase = await createClient();
 
   const {
@@ -16,6 +18,31 @@ export async function markMaterialComplete(
 
   if (!user) {
     throw new Error("Kamu harus login untuk menyimpan progres.");
+  }
+
+  // prerequisite_material_id di sini murni metadata urutan yang disarankan
+  // (lihat diskusi: lock materi sengaja tidak ditegakkan di platform ini),
+  // jadi pengecekan ini cuma untuk pesan error yang ramah kalau frontend
+  // lain nanti mencoba menegakkannya -- bukan pengaman utama.
+  const { data: material } = await supabase
+    .from("materials")
+    .select("prerequisite_material_id, subtopic_id")
+    .eq("id", materialId)
+    .single();
+
+  if (material?.prerequisite_material_id) {
+    const { data: prereqProgress } = await supabase
+      .from("user_progress")
+      .select("material_completed")
+      .eq("user_id", user.id)
+      .eq("material_id", material.prerequisite_material_id)
+      .maybeSingle();
+
+    if (!prereqProgress?.material_completed) {
+      throw new Error(
+        "Selesaikan materi sebelumnya terlebih dahulu sebelum lanjut ke materi ini."
+      );
+    }
   }
 
   const { error } = await supabase.from("user_progress").upsert(
@@ -35,6 +62,19 @@ export async function markMaterialComplete(
   }
 
   revalidatePath(`/materi/${categoryCode}`);
+
+  const newCertifications = await checkAndAwardCertifications(
+    supabase,
+    user.id,
+    categoryId,
+    material?.subtopic_id ?? null
+  );
+
+  if (newCertifications.length > 0) {
+    revalidatePath("/sertifikat");
+  }
+
+  return { newCertifications };
 }
 
 type RecommendedCategory = { id: string; code: string; name: string } | null;

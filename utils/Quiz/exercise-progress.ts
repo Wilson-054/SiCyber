@@ -1,8 +1,10 @@
-// Save as: app/actions/exercise-progress.ts
+// Save as: app/actions/exercise-progress.ts (replaces existing file)
 "use server";
 
 import { createClient } from "@/../utils/supabase/server";
 import { shouldShowReconsiderPrompt } from "@/../utils/Quiz/exercise-config";
+import { checkAndAwardCertifications, type AwardedCertification } from "@/../utils/certifications";
+import { revalidatePath } from "next/cache";
 
 type ProgressRow = {
   id?: string;
@@ -12,7 +14,10 @@ type ProgressRow = {
   exercise_status: "not_started" | "in_progress" | "completed";
 };
 
-export type ProgressCounters = ProgressRow & { reconsiderPrompt: boolean };
+export type ProgressCounters = ProgressRow & {
+  reconsiderPrompt: boolean;
+  newCertifications?: AwardedCertification[];
+};
 
 async function getOrCreateProgressRow(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -72,6 +77,7 @@ export async function recordAttempt(
   if (!user) return null;
 
   const row = await getOrCreateProgressRow(supabase, user.id, categoryId, exerciseId);
+  const alreadyCompleted = row.exercise_status === "completed";
 
   const attempts_count = row.attempts_count + 1;
   const consecutive_failures = success ? 0 : row.consecutive_failures + 1;
@@ -92,8 +98,32 @@ export async function recordAttempt(
 
   if (error) throw error;
 
+  // Sertifikat cuma dicek saat transisi ke completed yang PERTAMA KALI --
+  // menghindari query tambahan setiap kali user submit ulang exercise yang
+  // sudah pernah lulus sebelumnya.
+  let newCertifications: AwardedCertification[] = [];
+  if (success && !alreadyCompleted) {
+    const { data: exercise } = await supabase
+      .from("exercises")
+      .select("subtopic_id")
+      .eq("id", exerciseId)
+      .single();
+
+    newCertifications = await checkAndAwardCertifications(
+      supabase,
+      user.id,
+      categoryId,
+      exercise?.subtopic_id ?? null
+    );
+
+    if (newCertifications.length > 0) {
+      revalidatePath("/sertifikat");
+    }
+  }
+
   return {
     ...updated,
     reconsiderPrompt: !success && shouldShowReconsiderPrompt(updated.hints_used, updated.consecutive_failures),
+    newCertifications,
   };
 }
