@@ -37,6 +37,14 @@
                 Masuk sebagai <span className="text-[#E6EDF3]">{user.email}</span>
               </span>
             )}
+               {user && (
+              <Link
+                href="/sertifikat"
+                className="rounded-md border border-[#21262D] px-3 py-1.5 text-xs font-medium text-[#8B949E] transition-colors hover:border-[#F0883E]/50 hover:text-[#F0883E]"
+              >
+                Sertifikat Saya
+              </Link>
+            )}
             <form action={logout}>
               <button
                 type="submit"

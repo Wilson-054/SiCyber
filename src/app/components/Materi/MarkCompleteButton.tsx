@@ -7,10 +7,11 @@ import {
   getNextRecommendedCategoryAction,
 } from "@/app/materi/actions";
 import NextCategoryPrompt from "@/app/components/Materi/NextCategoryPrompt";
-import CertificateAwardedModal from "@/app/components/Materi/CertificateAwardedModal";
+import CertificateAwardedModal, {
+  type AwardedCertification,
+} from "@/app/components/Materi/CertificateAwardedModal";
 
 type RecommendedCategory = { id: string; code: string; name: string } | null;
-type AwardedCertification = { code: string; title: string; type: "subtopic" | "category" };
 
 export default function MarkCompleteButton({
   materialId,

@@ -8,31 +8,21 @@ import SqliLoginSimulator from "./A05/Sql/sqli-login-simulator";
 import IdorProfileSimulator from "./A01/lab1/idor-profile-simulator";
 import CsrfTransferSimulator from "./A01/lab2/CRSF-simulator-simulator";
 import  SsrfUrlImportSimulator from "./A01/lab3/ssrf-url-import-simulator";
-import SearchUnionSimulator from "@/../utils/Quiz/search-union-simulator";
-import NumericIdSimulator from "@/../utils/Quiz/numeric-id-simulator";
 import ReconsiderPrompt from "@/../utils/Quiz/ReconsiderPrompt";
 import type { SqliCriteria } from "./A05/Sql/sqli-evaluator"
 import SessionFixationSimulator from "./A07/session-fixation-simulator";
 //import type { ProgressCounters } from "@/app/actions/exercise-progress";
-
+import CertificateAwardedModal, {
+  type AwardedCertification,
+} from "@/app/components/Materi/CertificateAwardedModal";
 import type { ProgressCounters } from "../Quiz/exercise-progress"
-import DockerSocketSimulator from "@/../utils/Quiz/docker-socket-simulator";
-import XxeSimulator from "@/../utils/Quiz/xxe-simulator";
-import CloudStorageSimulator from "@/../utils/Quiz/cloud-storage-simulator";
-import DockerEscapeSimulator from "@/../utils/Quiz/docker-escape-simulator";
-import XxeBlindSimulator from "@/../utils/Quiz/xxe-blind-simulator";
 import RaceConditionLab from "./A10/race-condition-lab";
-import MisconfigDebugSimulator from "@/../utils/Quiz/misconfig-debug-simulator";
-import AuthTokenSimulator from "@/../utils/Quiz/auth-token-simulator";
 import type { ExerciseCriteria } from "@/../utils/Quiz/types";
 import ErrorDebugExposureSimulator from "@/../utils/Quiz/A10/error-debug-exposure-simulator";
-import WeakHashSimulator from "@/../utils/Quiz/weak-hash-simulator";
-import PriceTamperSimulator from "@/../utils/Quiz/price-tamper-simulator";
 import StoredXssSimulator from "./A05/xss/xss-simulator";
 import CookieTheftSimulator from "./A02/cookie-theft-simulator";
 import { getNextRecommendedCategoryAction } from "@/app/materi/actions";
 import NextCategoryPrompt from "@/app/components/Materi/NextCategoryPrompt";
-import CertificateAwardedModal from "@/app/components/Materi/CertificateAwardedModal";
 
 type Hint = { id: string; hint_order: number; content: string };
 type Feedback = {
@@ -42,8 +32,6 @@ type Feedback = {
   implementation_notes: string | null;
 };
 type RecommendedCategory = { id: string; code: string; name: string } | null;
-type AwardedCertification = { code: string; title: string; type: "subtopic" | "category" };
-
 const REDIRECT_DELAY_SECONDS = 15;
 
 export default function ExerciseWorkspace({
@@ -174,30 +162,11 @@ export default function ExerciseWorkspace({
       />
 
       {criteria.type === "sqli_login_bypass" && <SqliLoginSimulator {...simulatorProps} criteria={criteria} />}
-      {criteria.type === "sqli_search_union" && <SearchUnionSimulator {...simulatorProps} criteria={criteria} />}
-      {criteria.type === "sqli_id_filter" && <NumericIdSimulator {...simulatorProps} criteria={criteria} />}
-      {criteria.type === "misconfig_debug_endpoint" && <MisconfigDebugSimulator {...simulatorProps} criteria={criteria} />}
-      {criteria.type === "auth_predictable_session" && <AuthTokenSimulator {...simulatorProps} criteria={criteria} />}
-      {criteria.type === "crypto_weak_hash_crack" && <WeakHashSimulator {...simulatorProps} criteria={criteria} />}
-      {criteria.type === "insecure_design_price_tamper" && <PriceTamperSimulator {...simulatorProps} criteria={criteria} />}
-      {criteria.type === "race_condition_lab" && (
+   {criteria.type === "race_condition_lab" && (
         <RaceConditionLab categoryId={categoryId} exerciseId={exerciseId} criteria={criteria} />
       )}
-      {criteria.type === "misconfig_docker_socket_exposed" && (
-        <DockerSocketSimulator {...simulatorProps} criteria={criteria} />
-      )}
-      {criteria.type === "xxe_file_read" && (
-        <XxeSimulator {...simulatorProps} criteria={criteria} />
-      )}
-      {criteria.type === "misconfig_open_bucket" && (
-        <CloudStorageSimulator {...simulatorProps} criteria={criteria} />
-      )}
-      {criteria.type === "misconfig_docker_container_escape" && (
-        <DockerEscapeSimulator {...simulatorProps} criteria={criteria} />
-      )}
-      {criteria.type === "xxe_blind_exfil" && (
-        <XxeBlindSimulator {...simulatorProps} criteria={criteria} />
-      )}
+     
+    
       {criteria.type === "error_debug_exposure" && (
         <ErrorDebugExposureSimulator {...simulatorProps} criteria={criteria} />
       )}

@@ -101,19 +101,16 @@ export async function recordAttempt(
   // Sertifikat cuma dicek saat transisi ke completed yang PERTAMA KALI --
   // menghindari query tambahan setiap kali user submit ulang exercise yang
   // sudah pernah lulus sebelumnya.
+    // Sertifikat cuma dicek saat transisi ke completed yang PERTAMA KALI --
+  // menghindari query tambahan setiap kali user submit ulang exercise yang
+  // sudah pernah lulus sebelumnya.
   let newCertifications: AwardedCertification[] = [];
   if (success && !alreadyCompleted) {
-    const { data: exercise } = await supabase
-      .from("exercises")
-      .select("subtopic_id")
-      .eq("id", exerciseId)
-      .single();
-
     newCertifications = await checkAndAwardCertifications(
       supabase,
       user.id,
       categoryId,
-      exercise?.subtopic_id ?? null
+      exerciseId
     );
 
     if (newCertifications.length > 0) {

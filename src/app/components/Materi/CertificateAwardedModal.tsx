@@ -3,7 +3,11 @@
 
 import Link from "next/link";
 
-type AwardedCertification = { code: string; title: string; type: "subtopic" | "category" };
+export type AwardedCertification = {
+  code: string;
+  title: string;
+  type: "exercise" | "category";
+};
 
 export default function CertificateAwardedModal({
   certifications,
@@ -34,11 +38,11 @@ export default function CertificateAwardedModal({
         <ul className="mt-4 space-y-2">
           {certifications.map((cert) => (
             <li
-              key={cert.code}
+              key={`${cert.type}-${cert.code}`}
               className="rounded-md border border-[#238636]/40 bg-[#238636]/10 px-4 py-3 text-sm text-[#3FB950]"
             >
               <span className="mr-2 rounded-full border border-[#238636]/40 px-2 py-0.5 text-[10px] uppercase tracking-wide">
-                {cert.type === "category" ? "Kategori" : "Subtopik"}
+                {cert.type === "category" ? "Kategori" : "Latihan"}
               </span>
               {cert.title}
             </li>

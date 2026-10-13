@@ -3,7 +3,7 @@
 
 import { createClient } from "@/../utils/supabase/server";
 import { revalidatePath } from "next/cache";
-import { checkAndAwardCertifications, type AwardedCertification } from "@/../utils/certifications";
+import type { AwardedCertification } from "@/app/components/Materi/CertificateAwardedModal";
 
 export async function markMaterialComplete(
   materialId: string,
@@ -26,7 +26,7 @@ export async function markMaterialComplete(
   // lain nanti mencoba menegakkannya -- bukan pengaman utama.
   const { data: material } = await supabase
     .from("materials")
-    .select("prerequisite_material_id, subtopic_id")
+    .select("prerequisite_material_id")
     .eq("id", materialId)
     .single();
 
@@ -63,18 +63,10 @@ export async function markMaterialComplete(
 
   revalidatePath(`/materi/${categoryCode}`);
 
-  const newCertifications = await checkAndAwardCertifications(
-    supabase,
-    user.id,
-    categoryId,
-    material?.subtopic_id ?? null
-  );
-
-  if (newCertifications.length > 0) {
-    revalidatePath("/sertifikat");
-  }
-
-  return { newCertifications };
+  // Materi TIDAK memicu sertifikat -- sertifikat hanya dari exercise
+  // (lihat utils/certifications.ts). Field ini dipertahankan di return type
+  // supaya MarkCompleteButton.tsx tidak perlu diubah kontraknya.
+  return { newCertifications: [] };
 }
 
 type RecommendedCategory = { id: string; code: string; name: string } | null;
