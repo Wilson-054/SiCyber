@@ -5,33 +5,37 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/../utils/supabase/server";
 
+function failSignup(message: string): never {
+  redirect(`/signup?error=${encodeURIComponent(message)}`);
+}
+
 export async function signup(formData: FormData) {
   const supabase = await createClient();
 
-  const email = String(formData.get("email") ?? "");
+  const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const username = String(formData.get("username") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+  const username = String(formData.get("username") ?? "").trim();
 
   if (!email || !password) {
-    redirect("/signup?error=Email dan password wajib diisi");
+    failSignup("Email dan password wajib diisi");
   }
   if (password.length < 6) {
-    redirect("/signup?error=Password minimal 6 karakter");
+    failSignup("Password minimal 6 karakter");
   }
-
-  // No emailRedirectTo here — email confirmation is turned OFF in the
-  // Supabase dashboard (Authentication > Providers > Email), so this
-  // immediately creates a confirmed, logged-in user.
+  if (password !== confirmPassword) {
+    failSignup("Password dan konfirmasi password tidak sama");
+  }
   const { error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      data: { username }, // read by handle_new_user() trigger
+      data: { username }, 
     },
   });
 
   if (error) {
-    redirect(`/signup?error=${encodeURIComponent(error.message)}`);
+    failSignup(error.message);
   }
 
   revalidatePath("/", "layout");

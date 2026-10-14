@@ -1,20 +1,15 @@
-  // Types mirror public.onboarding_questions / public.onboarding_options
-  // and public.user_onboarding_result from the schema migration.
+// Types mirror public.quiz_questions / public.quiz_options /
+  // public.quiz_results. Satu bank soal dipakai untuk tiga jenis kuis
+  // (lihat QuizKind); aturan nilai opsi: score_value 0 = salah / tidak
+  // relevan, > 0 = benar (pre/post-test) atau bobot minat (interest).
 
-  export type DeterminedLevel = 'beginner' | 'intermediate' | 'advanced'
+  export type QuizKind = 'interest' | 'pretest' | 'posttest'
+  export type Level = 'beginner' | 'advanced'
 
   import type { SqliCriteria } from "./A05/Sql/sqli-evaluator";
   //import type { AccessControlCriteria } from "../Quiz/A01/lab2/access control evaluatrp";
-  import type { MisconfigDebugCriteria } from "@/../utils/Quiz/misconfig-evaluator";
-  import type { AuthWeakTokenDbCriteria } from "@/../utils/Quiz/auth-evaluator";
-  import type { CryptoWeakHashCriteria } from "@/../utils/Quiz/crypto-evaluator";
-  import type { InsecureDesignPriceCriteria } from "@/../utils/Quiz/insecure-design-evaluator";
-  import type { MisconfigDockerSocketCriteria } from "./docker-socket-evaluator";
-  import type { XxeFileReadCriteria } from "./xxe-evaluator";
 import type { CookieTheftCriteria } from "./A02/cookie-theft-evaluator";
 import type { SsrfUrlImportCriteria } from "@/../utils/Quiz/A01/lab3/ssrf-url-import-evaluator";
-  import type { MisconfigOpenBucketCriteria } from "./cloud-storage-evaluator";
-  import type { MisconfigDockerEscapeCriteria } from "./docker-escape-evaluator";
 import type { ErrorDebugExposureCriteria } from "@/../utils/Quiz/A10/error-debug-exposure-evaluator";
 import type { SessionFixationCriteria } from "./A07/session-fixation-evaluator";
 import type { IdorProfileCriteria } from "@/../utils/Quiz/A01/lab1/idor-profile-evaluator";
@@ -24,8 +19,7 @@ import type { StoredXssCriteria } from "./A05/xss/xss-evaluator";
 
 
 
-  import type { XxeBlindExfilCriteria } from "./xxe-blind-evaluator";
-  export interface OnboardingOption {
+  export interface QuizOption {
     id: string
     question_id: string
     option_text: string
@@ -33,12 +27,13 @@ import type { StoredXssCriteria } from "./A05/xss/xss-evaluator";
     order_index: number
   }
 
-  export interface OnboardingQuestion {
+  export interface QuizQuestion {
     id: string
+    kind: QuizKind
     question_text: string
-    category_id: string | null // null = general proficiency question
+    category_id: string
     order_index: number
-    onboarding_options: OnboardingOption[]
+    quiz_options: QuizOption[]
   }
 
   export interface Category {
@@ -53,12 +48,22 @@ import type { StoredXssCriteria } from "./A05/xss/xss-evaluator";
   // answers[questionId] = selected option's id
   export type AnswerMap = Record<string, string>
 
-  export interface OnboardingRecommendation {
-    determinedLevel: DeterminedLevel
-    totalScore: number
-    maxGeneralScore: number
+  export interface CategoryScore {
+    category: Category
+    score: number
+    total: number
+  }
+
+  // Hasil kuis minat (onboarding).
+  export interface InterestResult {
     recommendedCategory: Category | null
-    categoryScores: { category: Category; score: number }[]
+    categoryScores: CategoryScore[]
+  }
+
+  // Hasil kuis pengetahuan (pre-test / post-test) untuk satu kategori.
+  export interface KnowledgeResult {
+    score: number
+    total: number
   }
 
   export type RaceConditionLabCriteria = {
@@ -69,20 +74,7 @@ import type { StoredXssCriteria } from "./A05/xss/xss-evaluator";
     default_withdrawal_amount: number;
   };
   export type ExerciseCriteria =
-    | SqliCriteria
-    | MisconfigDebugCriteria
-    | AuthWeakTokenDbCriteria
-    | CryptoWeakHashCriteria
-    | InsecureDesignPriceCriteria
-    | RaceConditionLabCriteria
-    | MisconfigDockerSocketCriteria
-    | XxeFileReadCriteria
-    | MisconfigOpenBucketCriteria
-    | MisconfigDockerSocketCriteria    // baru - dasar
-    | XxeFileReadCriteria              // baru - dasar
-    | MisconfigOpenBucketCriteria|
-    XxeBlindExfilCriteria|
-    MisconfigDockerEscapeCriteria| ErrorDebugExposureCriteria
+    | SqliCriteria |ErrorDebugExposureCriteria
     | SessionFixationCriteria| StoredXssCriteria
   | CookieTheftCriteria | IdorProfileCriteria
   | CsrfTransferCriteria | SsrfUrlImportCriteria;

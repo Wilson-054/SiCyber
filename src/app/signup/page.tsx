@@ -1,7 +1,10 @@
-// Save as: app/signup/page.tsx
-
 import Link from "next/link";
 import { signup } from "@/app/auth/actions";
+
+const inputClass =
+  "w-full rounded-md border border-[#21262D] bg-[#161B22] px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#F0883E]";
+const labelClass =
+  "mb-1.5 block text-xs uppercase tracking-wide text-[#8B949E]";
 
 export default async function SignupPage({
   searchParams,
@@ -28,10 +31,7 @@ export default async function SignupPage({
 
         <form action={signup} className="space-y-4">
           <div>
-            <label
-              htmlFor="username"
-              className="mb-1.5 block text-xs uppercase tracking-wide text-[#8B949E]"
-            >
+            <label htmlFor="username" className={labelClass}>
               Username
             </label>
             <input
@@ -40,14 +40,12 @@ export default async function SignupPage({
               type="text"
               required
               autoComplete="username"
-              className="w-full rounded-md border border-[#21262D] bg-[#161B22] px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#F0883E]"
+              className={inputClass}
             />
           </div>
+
           <div>
-            <label
-              htmlFor="email"
-              className="mb-1.5 block text-xs uppercase tracking-wide text-[#8B949E]"
-            >
+            <label htmlFor="email" className={labelClass}>
               Email
             </label>
             <input
@@ -56,14 +54,12 @@ export default async function SignupPage({
               type="email"
               required
               autoComplete="email"
-              className="w-full rounded-md border border-[#21262D] bg-[#161B22] px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#F0883E]"
+              className={inputClass}
             />
           </div>
+
           <div>
-            <label
-              htmlFor="password"
-              className="mb-1.5 block text-xs uppercase tracking-wide text-[#8B949E]"
-            >
+            <label htmlFor="password" className={labelClass}>
               Password
             </label>
             <input
@@ -73,9 +69,24 @@ export default async function SignupPage({
               required
               minLength={6}
               autoComplete="new-password"
-              className="w-full rounded-md border border-[#21262D] bg-[#161B22] px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#F0883E]"
+              className={inputClass}
             />
             <p className="mt-1 text-xs text-[#8B949E]">Minimal 6 karakter.</p>
+          </div>
+
+          <div>
+            <label htmlFor="confirmPassword" className={labelClass}>
+              Konfirmasi Password
+            </label>
+            <input
+              id="confirmPassword"
+              name="confirmPassword"
+              type="password"
+              required
+              minLength={6}
+              autoComplete="new-password"
+              className={inputClass}
+            />
           </div>
 
           <button

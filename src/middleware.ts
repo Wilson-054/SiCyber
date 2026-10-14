@@ -32,12 +32,13 @@ export async function middleware(request: NextRequest) {
 
   // --- Sudah login: wajib sudah pernah selesai onboarding quiz -------
   const { data: onboarding } = await supabase
-    .from('user_onboarding_result')
-    .select('user_id')
+    .from('quiz_results')
+    .select('id')
     .eq('user_id', user.id)
-    .maybeSingle()
+    .eq('kind', 'interest')
+    .limit(1)
 
-  if (!onboarding) {
+  if (!onboarding || onboarding.length === 0) {
     const url = request.nextUrl.clone()
     url.pathname = '/onboarding'
     return NextResponse.redirect(url)
