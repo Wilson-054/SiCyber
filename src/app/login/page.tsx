@@ -1,4 +1,3 @@
-
 import Link from "next/link";
 import { login } from "@/app/auth/actions";
 
@@ -55,6 +54,12 @@ export default async function LoginPage({
               autoComplete="current-password"
               className="w-full rounded-md border border-[#21262D] bg-[#161B22] px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#F0883E]"
             />
+          </div>
+
+          <div className="-mt-1 text-right">
+            <Link href="/forgot-password" className="text-xs text-[#8B949E] hover:text-[#F0883E]">
+              Lupa password?
+            </Link>
           </div>
 
           <button

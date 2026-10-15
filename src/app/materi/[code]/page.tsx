@@ -1,8 +1,15 @@
-// Save as: app/materi/[code]/page.tsx (replaces previous version)
+// Save as: src/app/materi/[code]/page.tsx (MENGGANTIKAN versi lama)
+// Perubahan dari versi lama: item "posttest" ditambahkan di akhir daftar.
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/../utils/supabase/server";
+import {
+  buildSequence,
+  computeUnlockedKeys,
+  getPosttestState,
+  itemKey,
+} from "@/../utils/progress-lock";
 
 export const revalidate = 3600;
 
@@ -25,7 +32,7 @@ type Exercise = {
 
 type ListItem = {
   key: string;
-  type: "material" | "exercise";
+  type: "material" | "exercise" | "posttest";
   title: string;
   excerpt: string | null;
   difficulty_level: number;
@@ -33,12 +40,19 @@ type ListItem = {
   href: string;
   completed: boolean;
   inProgress: boolean;
+  locked: boolean;
 };
 
 const DIFFICULTY_LABEL: Record<number, string> = {
   1: "Dasar",
   2: "Menengah",
   3: "Lanjut",
+};
+
+const TYPE_LABEL: Record<ListItem["type"], string> = {
+  material: "Materi",
+  exercise: "Latihan",
+  posttest: "Post-test",
 };
 
 export default async function CategoryPage({
@@ -90,15 +104,9 @@ export default async function CategoryPage({
     }
   }
 
-  // Merge materials + exercises into a single ordered list. `order_index`
-  // is a SHARED numbering space between the two tables (multiples of 10 —
-  // see the A01 seed dump comments), specifically so materi and lab bisa
-  // diselang-seling, mis. 10 materi -> 20 lab -> 30 materi -> 40 materi ->
-  // 50 lab. Jadi setelah kedua array dipetakan ke ListItem, harus di-sort
-  // ULANG berdasarkan order_index gabungan — bukan sekadar materials dulu
-  // baru exercises, dan bukan cuma mengandalkan urutan dari masing-masing
-  // query (kedua request di atas berjalan paralel, urutannya tidak
-  // dijamin selaras satu sama lain).
+  // order_index adalah ruang penomoran GABUNGAN materi + exercise, jadi
+  // setelah dipetakan ke ListItem harus di-sort ulang berdasarkan urutan
+  // dari progress-lock (bukan urutan masing-masing query).
   const items: ListItem[] = [
     ...(materials ?? []).map((m: Material) => ({
       key: `material-${m.id}`,
@@ -110,6 +118,7 @@ export default async function CategoryPage({
       href: `/materi/${category.code}/${m.id}`,
       completed: completedMaterialIds.has(m.id),
       inProgress: false,
+      locked: false,
     })),
     ...(exercises ?? []).map((ex: Exercise) => {
       const status = exerciseStatusById.get(ex.id) ?? "not_started";
@@ -123,11 +132,53 @@ export default async function CategoryPage({
         href: `/materi/${category.code}/exercise/${ex.slug}`,
         completed: status === "completed",
         inProgress: status === "in_progress",
+        locked: false,
       };
     }),
-  ].sort((a, b) => a.order_index - b.order_index);
+  ];
 
-  const hasError = materialsError || exercisesError;
+  const sequence = buildSequence(materials ?? [], exercises ?? []);
+  const completedKeys = new Set(
+    items.filter((it) => it.completed).map((it) => it.key)
+  );
+  const unlockedKeys = computeUnlockedKeys(sequence, completedKeys);
+  const positionByKey = new Map(
+    sequence.map((s, i) => [itemKey(s.type, s.id), i] as const)
+  );
+
+  items.sort(
+    (a, b) => (positionByKey.get(a.key) ?? 0) - (positionByKey.get(b.key) ?? 0)
+  );
+  if (user) {
+    for (const it of items) it.locked = !unlockedKeys.has(it.key);
+  }
+
+  // Post-test: selalu item terakhir, terbuka kalau semua item sebelumnya
+  // selesai. Ditambahkan SETELAH sort supaya tidak ikut diurutkan.
+  let posttestError: string | null = null;
+  try {
+    const posttest = await getPosttestState(supabase, user?.id ?? null, category.id);
+    if (posttest.available) {
+      const allDone = items.every((it) => it.completed);
+      items.push({
+        key: `posttest-${category.id}`,
+        type: "posttest",
+        title: `Post-test ${category.code}`,
+        excerpt:
+          "Kerjakan semua soal dalam satu halaman. Lulus dengan skor minimal 80%, dengan batas 3 percobaan.",
+        difficulty_level: 1,
+        order_index: Number.MAX_SAFE_INTEGER,
+        href: `/materi/${category.code}/posttest`,
+        completed: posttest.passed,
+        inProgress: false,
+        locked: user ? !allDone : false,
+      });
+    }
+  } catch (e) {
+    posttestError = e instanceof Error ? e.message : "Gagal memuat post-test.";
+  }
+
+  const hasError = materialsError || exercisesError || posttestError;
 
   return (
     <main className="min-h-screen bg-[#0D1117] text-[#E6EDF3]">
@@ -151,7 +202,8 @@ export default async function CategoryPage({
 
         {hasError && (
           <div className="mb-6 rounded-md border border-[#F0883E]/40 bg-[#F0883E]/10 px-4 py-3 text-sm text-[#F0883E]">
-            Gagal memuat sebagian konten: {materialsError?.message ?? exercisesError?.message}
+            Gagal memuat sebagian konten:{" "}
+            {materialsError?.message ?? exercisesError?.message ?? posttestError}
           </div>
         )}
 
@@ -162,18 +214,20 @@ export default async function CategoryPage({
         )}
 
         <div className="space-y-4">
-          {items.map((item, i) => (
-            <Link
-              key={item.key}
-              href={item.href}
-              className="group block rounded-md border border-[#21262D] bg-[#161B22] px-5 py-5 transition-colors hover:border-[#F0883E]/50 hover:bg-[#1C2128]"
-            >
+          {items.map((item, i) => {
+            const content = (
+              <>
               <div className="mb-2 flex items-center justify-between">
                 <span className="font-mono text-xs text-[#8B949E]">{String(i + 1).padStart(2, "0")}</span>
                 <div className="flex items-center gap-2">
+                  {item.locked && (
+                    <span className="rounded-full border border-[#21262D] bg-[#0D1117] px-2 py-0.5 text-[11px] text-[#8B949E]">
+                      🔒 Terkunci
+                    </span>
+                  )}
                   {item.completed && (
                     <span className="rounded-full border border-[#238636]/40 bg-[#238636]/10 px-2 py-0.5 text-[11px] text-[#3FB950]">
-                      ✓ Selesai
+                      ✓ {item.type === "posttest" ? "Lulus" : "Selesai"}
                     </span>
                   )}
                   {item.inProgress && (
@@ -183,24 +237,55 @@ export default async function CategoryPage({
                   )}
                   <span
                     className={`rounded-full border px-2 py-0.5 text-[11px] uppercase tracking-wide ${
-                      item.type === "exercise"
-                        ? "border-[#F0883E]/40 text-[#F0883E]"
-                        : "border-[#21262D] text-[#8B949E]"
+                      item.type === "material"
+                        ? "border-[#21262D] text-[#8B949E]"
+                        : "border-[#F0883E]/40 text-[#F0883E]"
                     }`}
                   >
-                    {item.type === "exercise" ? "Latihan" : "Materi"}
+                    {TYPE_LABEL[item.type]}
                   </span>
-                  <span className="rounded-full border border-[#21262D] px-2 py-0.5 text-[11px] uppercase tracking-wide text-[#8B949E]">
-                    {DIFFICULTY_LABEL[item.difficulty_level] ?? "Dasar"}
-                  </span>
+                  {item.type !== "posttest" && (
+                    <span className="rounded-full border border-[#21262D] px-2 py-0.5 text-[11px] uppercase tracking-wide text-[#8B949E]">
+                      {DIFFICULTY_LABEL[item.difficulty_level] ?? "Dasar"}
+                    </span>
+                  )}
                 </div>
               </div>
               <h2 className="mb-2 text-lg font-medium text-[#E6EDF3] group-hover:text-white">{item.title}</h2>
-              {item.excerpt && (
-                <p className="line-clamp-2 text-sm leading-relaxed text-[#8B949E]">{item.excerpt}</p>
+              {item.locked ? (
+                <p className="text-sm leading-relaxed text-[#8B949E]">
+                  Selesaikan item sebelumnya untuk membuka ini.
+                </p>
+              ) : (
+                item.excerpt && (
+                  <p className="line-clamp-2 text-sm leading-relaxed text-[#8B949E]">{item.excerpt}</p>
+                )
               )}
-            </Link>
-          ))}
+              </>
+            );
+
+            if (item.locked) {
+              return (
+                <div
+                  key={item.key}
+                  aria-disabled="true"
+                  className="block cursor-not-allowed rounded-md border border-[#21262D] bg-[#161B22] px-5 py-5 opacity-60"
+                >
+                  {content}
+                </div>
+              );
+            }
+
+            return (
+              <Link
+                key={item.key}
+                href={item.href}
+                className="group block rounded-md border border-[#21262D] bg-[#161B22] px-5 py-5 transition-colors hover:border-[#F0883E]/50 hover:bg-[#1C2128]"
+              >
+                {content}
+              </Link>
+            );
+          })}
         </div>
       </div>
     </main>

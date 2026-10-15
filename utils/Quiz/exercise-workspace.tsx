@@ -162,10 +162,7 @@ export default function ExerciseWorkspace({
       />
 
       {criteria.type === "sqli_login_bypass" && <SqliLoginSimulator {...simulatorProps} criteria={criteria} />}
-   {criteria.type === "race_condition_lab" && (
-        <RaceConditionLab categoryId={categoryId} exerciseId={exerciseId} criteria={criteria} />
-      )}
-     
+ 
     
       {criteria.type === "error_debug_exposure" && (
         <ErrorDebugExposureSimulator {...simulatorProps} criteria={criteria} />

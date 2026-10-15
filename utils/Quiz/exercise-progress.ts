@@ -1,10 +1,10 @@
-// Save as: app/actions/exercise-progress.ts (replaces existing file)
+// Save as: utils/Quiz/exercise-progress.ts (replaces existing file)
 "use server";
 
 import { createClient } from "@/../utils/supabase/server";
 import { shouldShowReconsiderPrompt } from "@/../utils/Quiz/exercise-config";
-import { checkAndAwardCertifications, type AwardedCertification } from "@/../utils/certifications";
-import { revalidatePath } from "next/cache";
+import type { AwardedCertification } from "@/../utils/certifications";
+import { assertItemUnlocked } from "@/../utils/progress-lock";
 
 type ProgressRow = {
   id?: string;
@@ -16,6 +16,9 @@ type ProgressRow = {
 
 export type ProgressCounters = ProgressRow & {
   reconsiderPrompt: boolean;
+  // Dipertahankan hanya supaya ExerciseWorkspace yang masih membacanya tidak
+  // error. Sertifikat sekarang hanya terbit setelah lulus post-test, jadi
+  // nilainya selalu kosong dari file ini.
   newCertifications?: AwardedCertification[];
 };
 
@@ -52,6 +55,9 @@ export async function recordHintRevealed(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null; // not logged in — UI still lets them practice, just doesn't persist
 
+  // Lock berbasis order_index: tolak sebelum baris progres dibuat.
+  await assertItemUnlocked(supabase, user.id, "exercise", exerciseId);
+
   const row = await getOrCreateProgressRow(supabase, user.id, categoryId, exerciseId);
   const hints_used = row.hints_used + 1;
 
@@ -76,51 +82,41 @@ export async function recordAttempt(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
+  // Lock berbasis order_index: tolak sebelum baris progres dibuat.
+  await assertItemUnlocked(supabase, user.id, "exercise", exerciseId);
+
   const row = await getOrCreateProgressRow(supabase, user.id, categoryId, exerciseId);
   const alreadyCompleted = row.exercise_status === "completed";
 
   const attempts_count = row.attempts_count + 1;
   const consecutive_failures = success ? 0 : row.consecutive_failures + 1;
-  const exercise_status = success ? "completed" : "in_progress";
+  const now = new Date().toISOString();
+
+  // Status tidak pernah turun dari "completed".
+  const exercise_status: ProgressRow["exercise_status"] =
+    alreadyCompleted || success ? "completed" : "in_progress";
+
+  const patch: Record<string, unknown> = {
+    attempts_count,
+    consecutive_failures,
+    exercise_status,
+    updated_at: now,
+  };
+  // completed_at hanya diisi pada transisi pertama ke completed.
+  if (success && !alreadyCompleted) patch.completed_at = now;
 
   const { data: updated, error } = await supabase
     .from("user_progress")
-    .update({
-      attempts_count,
-      consecutive_failures,
-      exercise_status,
-      completed_at: success ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq("id", row.id)
     .select("hints_used, attempts_count, consecutive_failures, exercise_status")
     .single();
 
   if (error) throw error;
 
-  // Sertifikat cuma dicek saat transisi ke completed yang PERTAMA KALI --
-  // menghindari query tambahan setiap kali user submit ulang exercise yang
-  // sudah pernah lulus sebelumnya.
-    // Sertifikat cuma dicek saat transisi ke completed yang PERTAMA KALI --
-  // menghindari query tambahan setiap kali user submit ulang exercise yang
-  // sudah pernah lulus sebelumnya.
-  let newCertifications: AwardedCertification[] = [];
-  if (success && !alreadyCompleted) {
-    newCertifications = await checkAndAwardCertifications(
-      supabase,
-      user.id,
-      categoryId,
-      exerciseId
-    );
-
-    if (newCertifications.length > 0) {
-      revalidatePath("/sertifikat");
-    }
-  }
-
   return {
     ...updated,
     reconsiderPrompt: !success && shouldShowReconsiderPrompt(updated.hints_used, updated.consecutive_failures),
-    newCertifications,
+    newCertifications: [],
   };
 }

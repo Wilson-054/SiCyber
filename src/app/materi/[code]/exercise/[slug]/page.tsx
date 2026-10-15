@@ -1,8 +1,9 @@
-// Save as: app/materi/[code]/exercise/[slug]/page.tsx
+// Save as: src/app/materi/[code]/exercise/[slug]/page.tsx
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/../utils/supabase/server";
+import { getCategorySequenceState, itemKey } from "@/../utils/progress-lock";
 import ExerciseWorkspace from "@/../utils/Quiz/exercise-workspace";
 import type { SqliLoginCriteria } from "../../../../../../utils/Quiz/A05/Sql/sqli-evaluator";
 import type { ExerciseCriteria } from "@/../utils/Quiz/types";
@@ -23,19 +24,6 @@ export default async function ExerciseDetailPage({
     .single();
   if (!category) notFound();
 
-  // Ambil SEMUA exercise di kategori ini, diurutkan, untuk menentukan
-  // apakah exercise yang sedang dibuka ini adalah yang terakhir.
-  const { data: allExercises } = await supabase
-    .from("exercises")
-    .select("id, slug, order_index")
-    .eq("category_id", category.id)
-    .order("order_index", { ascending: true });
-
-  const exerciseList = allExercises ?? [];
-  const currentExerciseIndex = exerciseList.findIndex((e) => e.slug === slug);
-  const isLastExercise =
-    currentExerciseIndex >= 0 && currentExerciseIndex === exerciseList.length - 1;
-
   const { data: exercise } = await supabase
     .from("exercises")
     .select("id, slug, title, description, difficulty_level, scenario_config, success_criteria")
@@ -45,6 +33,34 @@ export default async function ExerciseDetailPage({
   if (!exercise) notFound();
   const criteria = exercise.success_criteria as ExerciseCriteria;
   if (!criteria?.type) notFound();
+
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Lock berbasis order_index (utils/progress-lock.ts). Server-side: URL
+  // langsung ke exercise yang masih terkunci dialihkan ke halaman daftar.
+  // "Exercise terakhir" = item terakhir di urutan gabungan materi + exercise.
+  let isLastExercise = false;
+  if (user) {
+    const state = await getCategorySequenceState(supabase, user.id, category.id);
+    const key = itemKey("exercise", exercise.id);
+
+    if (!state.unlockedKeys.has(key)) {
+      redirect(`/materi/${category.code}`);
+    }
+
+    const last = state.sequence[state.sequence.length - 1];
+    isLastExercise = !!last && itemKey(last.type, last.id) === key;
+  } else {
+    // Belum login: tidak ada progres untuk dikunci, jadi cukup cek urutan
+    // exercise saja seperti sebelumnya.
+    const { data: allExercises } = await supabase
+      .from("exercises")
+      .select("id, order_index")
+      .eq("category_id", category.id)
+      .order("order_index", { ascending: true });
+    const list = allExercises ?? [];
+    isLastExercise = list.length > 0 && list[list.length - 1].id === exercise.id;
+  }
   const { data: hints } = await supabase
     .from("exercise_hints")
     .select("id, hint_order, content")
@@ -60,8 +76,6 @@ export default async function ExerciseDetailPage({
     success: feedbackRows?.find((f) => f.outcome === "success"),
     failure: feedbackRows?.find((f) => f.outcome === "failure"),
   };
-
-  const { data: { user } } = await supabase.auth.getUser();
 
   let initialCounters = { hints_used: 0, attempts_count: 0, consecutive_failures: 0, exercise_status: "not_started" };
   if (user) {

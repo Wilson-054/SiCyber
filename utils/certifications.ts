@@ -1,166 +1,92 @@
-// Save as: utils/certifications.ts
+// Save as: utils/certifications.ts (MENGGANTIKAN versi lama)
 //
-// Helper bersama, dipanggil dari SATU titik penyelesaian:
-//   - app/actions/exercise-progress.ts -> recordAttempt (saat success, dan
-//     hanya saat transisi ke 'completed' yang PERTAMA KALI)
+// TIDAK ADA TABEL SERTIFIKAT. Semua murni "derived" dari quiz_results.
 //
-// TIDAK ADA TABEL SERTIFIKAT. Semua di file ini murni "derived": dihitung
-// ulang dari user_progress + exercises + categories setiap kali dibutuhkan.
-// Tidak ada insert/write di sini sama sekali.
+// Aturan:
+//   - HANYA sertifikat KATEGORI.
+//   - Didapat HANYA setelah lulus post-test kategori itu (skor >= 80%).
+//   - Tanggal terbit = submitted_at percobaan lulus PERTAMA.
+//   - Menyelesaikan exercise TIDAK memberi sertifikat apa pun.
 //
-// Dua level sertifikat:
-//   - "exercise" : exercise tertentu baru saja completed pertama kali
-//   - "category" : SELURUH exercise dalam satu category_id sudah completed
-//                  (materi / material_completed TIDAK dihitung di sini)
+// checkAndAwardCertifications dihapus. Kalau ada file lain yang masih
+// mengimpornya, tsc akan menunjukkannya; hapus pemanggilnya.
 
 import { createClient } from "@/../utils/supabase/server";
+import { isPassing, POSTTEST_KIND } from "@/../utils/Quiz/posttest";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
+// Union "exercise" | "category" sengaja dipertahankan supaya
+// CertificateAwardedModal (yang belum dilihat) tetap lolos tsc. Tidak ada
+// kode yang lagi membuat nilai bertipe "exercise". Persempit ke "category"
+// setelah modal itu dibersihkan.
 export type AwardedCertification = {
   code: string;
   title: string;
   type: "exercise" | "category";
 };
 
-export type UserCertificate = AwardedCertification & {
+export type UserCertificate = {
+  code: string;
+  title: string;
+  type: "category";
   issued_at: string;
 };
 
-/**
- * Dipanggil TEPAT SAAT sebuah exercise baru saja bertransisi ke status
- * "completed" untuk PERTAMA KALINYA. Caller (recordAttempt) yang menjamin
- * ini lewat pengecekan !alreadyCompleted -- fungsi ini tidak mengecek ulang,
- * jadi jangan panggil di luar konteks itu.
- */
-export async function checkAndAwardCertifications(
-  supabase: SupabaseServerClient,
-  userId: string,
-  categoryId: string,
-  exerciseId: string
-): Promise<AwardedCertification[]> {
-  const awarded: AwardedCertification[] = [];
-
-  const { data: exercise } = await supabase
-    .from("exercises")
-    .select("slug, title")
-    .eq("id", exerciseId)
-    .single();
-
-  if (exercise) {
-    awarded.push({ code: exercise.slug, title: exercise.title, type: "exercise" });
-  }
-
-  if (await isCategoryComplete(supabase, userId, categoryId)) {
-    const { data: category } = await supabase
-      .from("categories")
-      .select("code, name")
-      .eq("id", categoryId)
-      .single();
-
-    if (category) {
-      awarded.push({ code: category.code, title: category.name, type: "category" });
-    }
-  }
-
-  return awarded;
-}
-
-async function isCategoryComplete(
-  supabase: SupabaseServerClient,
-  userId: string,
-  categoryId: string
-): Promise<boolean> {
-  const { data: exercises } = await supabase
-    .from("exercises")
-    .select("id")
-    .eq("category_id", categoryId);
-
-  const exerciseIds = (exercises ?? []).map((e) => e.id);
-  if (exerciseIds.length === 0) return false; // belum ada exercise -> belum bisa lulus
-
-  const { data: completed } = await supabase
-    .from("user_progress")
-    .select("exercise_id")
-    .eq("user_id", userId)
-    .eq("exercise_status", "completed")
-    .in("exercise_id", exerciseIds);
-
-  return (completed?.length ?? 0) === exerciseIds.length;
-}
+type Category = { code: string; name: string };
+type ResultRow = {
+  score: number | null;
+  total: number | null;
+  submitted_at: string | null;
+  // Tergantung bentuk relasi, PostgREST bisa mengembalikan objek atau array.
+  categories: Category | Category[] | null;
+};
 
 /**
- * Dipakai oleh halaman /sertifikat untuk menampilkan SEMUA sertifikat yang
- * "dipegang" user saat ini. Dihitung ulang penuh setiap render (full
- * derived) -- tidak masalah untuk skala skripsi (jumlah kategori & exercise
- * kecil). Kalau nanti data membesar, ini kandidat pertama untuk di-cache
- * atau dipindah ke satu view/RPC di Postgres.
+ * Semua sertifikat yang dipegang user saat ini. Dihitung ulang setiap
+ * render dari satu query ke quiz_results.
  */
 export async function getUserCertificates(
   supabase: SupabaseServerClient,
   userId: string
 ): Promise<UserCertificate[]> {
-  const certs: UserCertificate[] = [];
-
-  // --- Sertifikat exercise ---
-  const { data: completedRows } = await supabase
-    .from("user_progress")
-    .select("completed_at, exercises(slug, title)")
+  const { data, error } = await supabase
+    .from("quiz_results")
+    .select("score, total, submitted_at, categories(code, name)")
     .eq("user_id", userId)
-    .eq("exercise_status", "completed")
-    .not("exercise_id", "is", null);
+    .eq("kind", POSTTEST_KIND)
+    .not("submitted_at", "is", null)
+    .not("score", "is", null)
+    .order("submitted_at", { ascending: true });
 
-  type ExerciseRow = {
-    completed_at: string | null;
-    exercises: { slug: string; title: string } | null;
-  };
-
-  for (const row of (completedRows ?? []) as unknown as ExerciseRow[]) {
-    if (!row.exercises || !row.completed_at) continue;
-    certs.push({
-      code: row.exercises.slug,
-      title: row.exercises.title,
-      type: "exercise",
-      issued_at: row.completed_at,
+  if (error) {
+    console.error("[getUserCertificates] select quiz_results gagal", {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
     });
+    return [];
   }
 
-  // --- Sertifikat kategori ---
-  const { data: categories } = await supabase.from("categories").select("id, code, name");
+  const byCategory = new Map<string, UserCertificate>();
 
-  for (const category of categories ?? []) {
-    const { data: exercises } = await supabase
-      .from("exercises")
-      .select("id")
-      .eq("category_id", category.id);
+  // Urutan ascending: percobaan lulus pertama per kategori yang menang.
+  for (const row of (data ?? []) as unknown as ResultRow[]) {
+    if (row.score == null || row.total == null || !row.submitted_at) continue;
+    if (!isPassing(row.score, row.total)) continue;
 
-    const exerciseIds = (exercises ?? []).map((e) => e.id);
-    if (exerciseIds.length === 0) continue;
+    const category = Array.isArray(row.categories) ? row.categories[0] : row.categories;
+    if (!category) continue;
+    if (byCategory.has(category.code)) continue;
 
-    const { data: progress } = await supabase
-      .from("user_progress")
-      .select("completed_at")
-      .eq("user_id", userId)
-      .eq("exercise_status", "completed")
-      .in("exercise_id", exerciseIds);
-
-    if ((progress?.length ?? 0) !== exerciseIds.length) continue;
-
-    const issuedAt = (progress ?? [])
-      .map((p) => p.completed_at)
-      .filter((d): d is string => !!d)
-      .sort()
-      .pop();
-
-    certs.push({
+    byCategory.set(category.code, {
       code: category.code,
       title: category.name,
       type: "category",
-      issued_at: issuedAt ?? new Date().toISOString(),
+      issued_at: row.submitted_at,
     });
   }
 
-  certs.sort((a, b) => (a.issued_at < b.issued_at ? 1 : -1));
-
-  return certs;
+  return [...byCategory.values()].sort((a, b) => (a.issued_at < b.issued_at ? 1 : -1));
 }

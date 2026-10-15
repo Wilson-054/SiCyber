@@ -1,13 +1,14 @@
-// Save as: app/materi/actions.ts (replaces existing file)
+// Save as: src/app/materi/actions.ts (replaces existing file)
 "use server";
 
 import { createClient } from "@/../utils/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { AwardedCertification } from "@/app/components/Materi/CertificateAwardedModal";
+import { assertItemUnlocked } from "@/../utils/progress-lock";
 
 export async function markMaterialComplete(
   materialId: string,
-  categoryId: string,
+  _categoryId: string, // dipertahankan demi kontrak MarkCompleteButton; category_id diambil dari database
   categoryCode: string
 ): Promise<{ newCertifications: AwardedCertification[] }> {
   const supabase = await createClient();
@@ -20,35 +21,20 @@ export async function markMaterialComplete(
     throw new Error("Kamu harus login untuk menyimpan progres.");
   }
 
-  // prerequisite_material_id di sini murni metadata urutan yang disarankan
-  // (lihat diskusi: lock materi sengaja tidak ditegakkan di platform ini),
-  // jadi pengecekan ini cuma untuk pesan error yang ramah kalau frontend
-  // lain nanti mencoba menegakkannya -- bukan pengaman utama.
-  const { data: material } = await supabase
-    .from("materials")
-    .select("prerequisite_material_id")
-    .eq("id", materialId)
-    .single();
-
-  if (material?.prerequisite_material_id) {
-    const { data: prereqProgress } = await supabase
-      .from("user_progress")
-      .select("material_completed")
-      .eq("user_id", user.id)
-      .eq("material_id", material.prerequisite_material_id)
-      .maybeSingle();
-
-    if (!prereqProgress?.material_completed) {
-      throw new Error(
-        "Selesaikan materi sebelumnya terlebih dahulu sebelum lanjut ke materi ini."
-      );
-    }
-  }
+  // Lock berbasis order_index (lihat utils/progress-lock.ts): materi ini hanya
+  // boleh ditandai selesai kalau semua item sebelumnya di kategori yang sama
+  // (materi + exercise) sudah selesai.
+  const verifiedCategoryId = await assertItemUnlocked(
+    supabase,
+    user.id,
+    "material",
+    materialId
+  );
 
   const { error } = await supabase.from("user_progress").upsert(
     {
       user_id: user.id,
-      category_id: categoryId,
+      category_id: verifiedCategoryId,
       material_id: materialId,
       material_completed: true,
       material_completed_at: new Date().toISOString(),
@@ -61,7 +47,9 @@ export async function markMaterialComplete(
     throw new Error(`Gagal menyimpan progres: ${error.message}`);
   }
 
-  revalidatePath(`/materi/${categoryCode}`);
+  // "layout" supaya halaman daftar DAN halaman detail di bawahnya ikut segar
+  // (tombol "berikutnya" di halaman detail bergantung pada status selesai).
+  revalidatePath(`/materi/${categoryCode}`, "layout");
 
   // Materi TIDAK memicu sertifikat -- sertifikat hanya dari exercise
   // (lihat utils/certifications.ts). Field ini dipertahankan di return type

@@ -1,11 +1,12 @@
-// Save as: app/materi/[code]/[materialId]/page.tsx
+// Save as: src/app/materi/[code]/[materialId]/page.tsx
 // Requires: npm install react-markdown remark-gfm
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { createClient } from "@/../utils/supabase/server";
+import { getCategorySequenceState, itemKey } from "@/../utils/progress-lock";
 import MarkCompleteButton from "@/app/components/Materi/MarkCompleteButton";
 
 export const revalidate = 3600;
@@ -96,14 +97,28 @@ export default async function MaterialDetailPage({
   } = await supabase.auth.getUser();
 
   let alreadyCompleted = false;
+  let nextLocked = false;
+  let isLastInCategory = !next;
+
   if (user) {
-    const { data: progress } = await supabase
-      .from("user_progress")
-      .select("material_completed")
-      .eq("user_id", user.id)
-      .eq("material_id", material.id)
-      .maybeSingle();
-    alreadyCompleted = progress?.material_completed ?? false;
+    // Lock berbasis order_index (utils/progress-lock.ts). Server-side: URL
+    // langsung ke materi yang masih terkunci dialihkan ke halaman daftar.
+    const state = await getCategorySequenceState(supabase, user.id, category.id);
+    const key = itemKey("material", material.id);
+
+    if (!state.unlockedKeys.has(key)) {
+      redirect(`/materi/${category.code}`);
+    }
+
+    alreadyCompleted = state.completedKeys.has(key);
+    nextLocked = next
+      ? !state.unlockedKeys.has(itemKey("material", next.id))
+      : false;
+
+    // "Materi terakhir" = item terakhir di urutan gabungan materi + exercise,
+    // bukan sekadar materi terakhir (bisa saja masih ada exercise sesudahnya).
+    const last = state.sequence[state.sequence.length - 1];
+    isLastInCategory = !!last && itemKey(last.type, last.id) === key;
   }
 
   return (
@@ -146,16 +161,25 @@ export default async function MaterialDetailPage({
             categoryId={category.id}
             categoryCode={category.code}
             initialCompleted={alreadyCompleted}
-            isLastMaterial={!next}
+            isLastMaterial={isLastInCategory}
           />
 
           {next ? (
-            <Link
-              href={`/materi/${category.code}/${next.id}`}
-              className="max-w-[30%] truncate text-right font-mono text-xs text-[#8B949E] hover:text-[#F0883E]"
-            >
-              {next.title} →
-            </Link>
+            nextLocked ? (
+              <span
+                aria-disabled="true"
+                className="max-w-[30%] cursor-not-allowed truncate text-right font-mono text-xs text-[#8B949E] opacity-50"
+              >
+                🔒 {next.title}
+              </span>
+            ) : (
+              <Link
+                href={`/materi/${category.code}/${next.id}`}
+                className="max-w-[30%] truncate text-right font-mono text-xs text-[#8B949E] hover:text-[#F0883E]"
+              >
+                {next.title} →
+              </Link>
+            )
           ) : (
             <span />
           )}
