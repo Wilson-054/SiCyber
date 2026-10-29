@@ -1,26 +1,21 @@
-// Save as: src/app/materi/[code]/posttest/page.tsx (MENGGANTIKAN versi lama)
-//
-// Halaman ini TIDAK lagi memuat soal. Soal baru dikirim oleh startPosttest
-// setelah user menekan Mulai dan percobaannya tercatat.
 
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/../utils/supabase/server";
-import { getCategorySequenceState } from "@/../utils/progress-lock";
+import { getQuizAccess } from "@/../utils/progress-lock";
 import {
   computeAttemptStatus,
   passingScore,
-  POSTTEST_DURATION_MS,
-  POSTTEST_KIND,
-} from "@/../utils/Quiz/posttest";
-import PosttestClient from "./posttest-client";
+  QUIZ_DURATION_MS,
+} from "@/../utils/Quiz/quiz";
+import QuizClient from "./quiz-client";
 
-export default async function PosttestPage({
+export default async function QuizPage({
   params,
 }: {
-  params: Promise<{ code: string }>;
+  params: Promise<{ code: string; quizId: string }>;
 }) {
-  const { code } = await params;
+  const { code, quizId } = await params;
   const supabase = await createClient();
 
   const { data: category } = await supabase
@@ -49,38 +44,35 @@ export default async function PosttestPage({
         <div className="mx-auto max-w-3xl px-6 py-16">
           {backLink}
           <div className="rounded-md border border-[#21262D] bg-[#161B22] px-4 py-6 text-sm text-[#8B949E]">
-            Masuk dulu untuk mengerjakan post-test. Hasil, sisa percobaan, dan sertifikatmu tersimpan di akunmu.
+            Masuk dulu untuk mengerjakan kuis. Hasil dan progresmu tersimpan di akunmu.
           </div>
         </div>
       </main>
     );
   }
 
-  // Lock di sisi server: URL langsung ke post-test yang masih terkunci
-  // dialihkan ke halaman daftar.
-  const state = await getCategorySequenceState(supabase, user.id, category.id);
-  if (!state.posttest.available) notFound();
-  if (!state.posttest.unlocked) redirect(`/materi/${category.code}`);
+  const access = await getQuizAccess(supabase, user.id, quizId);
+  if (access.status === "not_found" || access.quiz.category_id !== category.id) notFound();
+  if (access.status === "locked") redirect(`/materi/${category.code}`);
+
+  const { quiz, passed } = access;
+  const issuesCertificate = quiz.kind === "posttest";
 
   const [{ count }, { data: attempts }] = await Promise.all([
-    supabase
-      .from("quiz_questions")
-      .select("id", { count: "exact", head: true })
-      .eq("category_id", category.id)
-      .eq("kind", POSTTEST_KIND),
+    supabase.from("quiz_questions").select("id", { count: "exact", head: true }).eq("quiz_id", quiz.id),
     supabase
       .from("quiz_results")
       .select("created_at, submitted_at, expires_at")
       .eq("user_id", user.id)
-      .eq("category_id", category.id)
-      .eq("kind", POSTTEST_KIND),
+      .eq("quiz_id", quiz.id),
   ]);
 
   const rows = attempts ?? [];
-  const status = computeAttemptStatus(rows.map((a) => a.created_at as string));
+  const status = computeAttemptStatus(
+    rows.map((a) => a.created_at as string),
+    quiz.maxAttempts
+  );
   const nowMs = Date.now();
-  // Percobaan terbuka yang masih berjalan bisa dilanjutkan. Yang sudah lewat
-  // waktu ditutup oleh startPosttest saat user menekan Mulai.
   const hasOpenAttempt = rows.some(
     (a) => !a.submitted_at && a.expires_at && new Date(a.expires_at as string).getTime() > nowMs
   );
@@ -93,21 +85,25 @@ export default async function PosttestPage({
         {backLink}
 
         <header className="mb-8 border-b border-[#21262D] pb-6">
-          <h1 className="text-3xl font-semibold tracking-tight">Post-test {category.code}</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">{quiz.title}</h1>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-[#8B949E]">
-            Lulus post-test untuk mendapatkan sertifikat kategori {category.name}.
+            {quiz.description ??
+              (issuesCertificate
+                ? `Lulus kuis ini untuk mendapatkan sertifikat kategori ${category.name}.`
+                : `Kuis kategori ${category.name}.`)}
           </p>
         </header>
 
-        <PosttestClient
-          categoryId={category.id}
+        <QuizClient
+          quizId={quiz.id}
           categoryCode={category.code}
           questionCount={questionCount}
-          durationMinutes={Math.round(POSTTEST_DURATION_MS / 60000)}
+          durationMinutes={Math.round(QUIZ_DURATION_MS / 60000)}
           passMark={passingScore(questionCount)}
           initialStatus={status}
           initialHasOpenAttempt={hasOpenAttempt}
-          alreadyPassed={state.posttest.passed}
+          alreadyPassed={passed}
+          issuesCertificate={issuesCertificate}
         />
       </div>
     </main>

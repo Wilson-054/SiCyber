@@ -1,4 +1,4 @@
-// Save as: app/sertifikat/page.tsx
+
 import { createClient } from "@/../utils/supabase/server";
 import { redirect } from "next/navigation";
 import { getUserCertificates } from "@/../utils/certifications";

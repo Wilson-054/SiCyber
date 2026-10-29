@@ -2,11 +2,10 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { updateSession } from '@/../utils/supabase/middleware'
 import { PW_RESET_COOKIE, isResetCookieValid } from '@/../utils/auth-rules'
 
-// Halaman yang boleh dibuka tanpa login. User yang SUDAH login dilempar ke /materi.
 const PUBLIC_PATHS = ['/login', '/signup', '/forgot-password', '/reset-password']
 
-// Hanya bisa dibuka tepat setelah kode reset password diverifikasi.
 const NEW_PASSWORD_PATH = '/new-password'
+const ONBOARDED_COOKIE = 'onboarded'
 
 function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
@@ -16,7 +15,6 @@ export async function middleware(request: NextRequest) {
   const { supabaseResponse, supabase, user } = await updateSession(request)
   const { pathname } = request.nextUrl
 
-  // --- Belum login: hanya boleh akses halaman publik -----------------
   if (!user) {
     if (isPublicPath(pathname)) return supabaseResponse
     const url = request.nextUrl.clone()
@@ -30,9 +28,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // --- /new-password: wajib punya cookie penanda hasil verifikasi kode.
-  //     Tanpa itu (mis. user login biasa), kembalikan ke /materi. Halaman ini
-  //     juga dilewatkan dari gate onboarding supaya tidak terpental.
   if (pathname === NEW_PASSWORD_PATH) {
     const marker = request.cookies.get(PW_RESET_COOKIE)?.value
     if (isResetCookieValid(marker, user.id)) return supabaseResponse
@@ -41,24 +36,30 @@ export async function middleware(request: NextRequest) {
     url.search = ''
     return NextResponse.redirect(url)
   }
-
-  // --- Sudah login tapi masih buka halaman publik --------------------
   if (isPublicPath(pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = '/materi'
     return NextResponse.redirect(url)
   }
 
-  // --- Biarkan halaman onboarding lolos, biar tidak redirect loop ----
   if (pathname === '/onboarding') return supabaseResponse
 
-  // --- Sudah login: wajib sudah pernah selesai onboarding quiz -------
-  const { data: onboarding } = await supabase
+  // Fast path: onboarding already verified for this user, skip the DB call
+  if (request.cookies.get(ONBOARDED_COOKIE)?.value === user.id) {
+    return supabaseResponse
+  }
+
+  const { data: onboarding, error: onboardingError } = await supabase
     .from('quiz_results')
-    .select('id')
+    .select('id, quizzes!inner(kind)')
     .eq('user_id', user.id)
-    .eq('kind', 'interest')
+    .eq('quizzes.kind', 'interest')
     .limit(1)
+
+  if (onboardingError) {
+    console.error('[middleware] gagal cek onboarding', onboardingError)
+    return supabaseResponse
+  }
 
   if (!onboarding || onboarding.length === 0) {
     const url = request.nextUrl.clone()
@@ -66,6 +67,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  supabaseResponse.cookies.set(ONBOARDED_COOKIE, user.id, {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 60 * 60 * 24 * 30,
+  })
   return supabaseResponse
 }
 

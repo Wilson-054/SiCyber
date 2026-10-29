@@ -1,4 +1,4 @@
-// Save as: src/app/materi/actions.ts (replaces existing file)
+
 "use server";
 
 import { createClient } from "@/../utils/supabase/server";
@@ -8,7 +8,7 @@ import { assertItemUnlocked } from "@/../utils/progress-lock";
 
 export async function markMaterialComplete(
   materialId: string,
-  _categoryId: string, // dipertahankan demi kontrak MarkCompleteButton; category_id diambil dari database
+  _categoryId: string, 
   categoryCode: string
 ): Promise<{ newCertifications: AwardedCertification[] }> {
   const supabase = await createClient();
@@ -21,9 +21,6 @@ export async function markMaterialComplete(
     throw new Error("Kamu harus login untuk menyimpan progres.");
   }
 
-  // Lock berbasis order_index (lihat utils/progress-lock.ts): materi ini hanya
-  // boleh ditandai selesai kalau semua item sebelumnya di kategori yang sama
-  // (materi + exercise) sudah selesai.
   const verifiedCategoryId = await assertItemUnlocked(
     supabase,
     user.id,
@@ -47,13 +44,8 @@ export async function markMaterialComplete(
     throw new Error(`Gagal menyimpan progres: ${error.message}`);
   }
 
-  // "layout" supaya halaman daftar DAN halaman detail di bawahnya ikut segar
-  // (tombol "berikutnya" di halaman detail bergantung pada status selesai).
   revalidatePath(`/materi/${categoryCode}`, "layout");
 
-  // Materi TIDAK memicu sertifikat -- sertifikat hanya dari exercise
-  // (lihat utils/certifications.ts). Field ini dipertahankan di return type
-  // supaya MarkCompleteButton.tsx tidak perlu diubah kontraknya.
   return { newCertifications: [] };
 }
 
@@ -87,7 +79,6 @@ export async function getNextRecommendedCategoryAction(
     onboarding?.category_scores ?? [];
   const scoreMap = new Map(scores.map((s) => [s.category.id, s.score]));
 
-  // --- materi ---
   const { data: materials } = await supabase
     .from("materials")
     .select("id, category_id");
@@ -109,7 +100,6 @@ export async function getNextRecommendedCategoryAction(
     materialsByCategory.set(m.category_id, list);
   }
 
-  // --- exercise ---
   const { data: exercises } = await supabase
     .from("exercises")
     .select("id, category_id");

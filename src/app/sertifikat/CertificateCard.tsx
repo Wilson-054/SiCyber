@@ -1,4 +1,4 @@
-// Save as: app/components/Sertifikat/CertificateCard.tsx
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -12,9 +12,8 @@ type Certificate = {
 };
 
 const TEMPLATE_SRC = templateImage.src;
-const REF_W = 2000; // semua koordinat di bawah relatif terhadap lebar 2000px
+const REF_W = 2000; 
 
-// Posisi & gaya teks (sesuaikan di sini kalau ada yang kurang pas)
 const LAYOUT = {
   name:  { y: 610,  maxWidth: 1300, startSize: 110, minSize: 50, color: "#8B5A2B", weight: 700 },
   title: { y: 858,  maxWidth: 1500, startSize: 46,  minSize: 28, color: "#111111", weight: 500 },
@@ -33,7 +32,6 @@ function ensureFonts() {
         const loaded = await Promise.all(faces.map((f) => f.load()));
         loaded.forEach((f) => document.fonts.add(f));
       } catch {
-        // fallback ke sans-serif bawaan kalau file font tidak ditemukan
       }
     })();
   }

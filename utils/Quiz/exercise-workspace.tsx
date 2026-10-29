@@ -6,21 +6,22 @@ import { useRouter } from "next/navigation";
 import HintPanel from "@/../utils/Quiz/hint-panel";
 import SqliLoginSimulator from "./A05/Sql/sqli-login-simulator";
 import IdorProfileSimulator from "./A01/lab1/idor-profile-simulator";
+import XxeSimulator from "./A02/xxe-simulator";
 import CsrfTransferSimulator from "./A01/lab2/CRSF-simulator-simulator";
 import  SsrfUrlImportSimulator from "./A01/lab3/ssrf-url-import-simulator";
 import ReconsiderPrompt from "@/../utils/Quiz/ReconsiderPrompt";
+import LogInjectionSimulator from "./A09/log-injection-simulator";
 import type { SqliCriteria } from "./A05/Sql/sqli-evaluator"
-import SessionFixationSimulator from "./A07/session-fixation-simulator";
+import FileUploadSimulator from "./A06/file-upload-simulator";
+import SessionFixationLoginSimulator from "./A07/session-fixation-login-simulator";
 //import type { ProgressCounters } from "@/app/actions/exercise-progress";
 import CertificateAwardedModal, {
   type AwardedCertification,
 } from "@/app/components/Materi/CertificateAwardedModal";
 import type { ProgressCounters } from "../Quiz/exercise-progress"
-import RaceConditionLab from "./A10/race-condition-lab";
 import type { ExerciseCriteria } from "@/../utils/Quiz/types";
-import ErrorDebugExposureSimulator from "@/../utils/Quiz/A10/error-debug-exposure-simulator";
+import FailOpenSimulator from "./A10/fail-open-simulator";
 import StoredXssSimulator from "./A05/xss/xss-simulator";
-import CookieTheftSimulator from "./A02/cookie-theft-simulator";
 import { getNextRecommendedCategoryAction } from "@/app/materi/actions";
 import NextCategoryPrompt from "@/app/components/Materi/NextCategoryPrompt";
 
@@ -164,17 +165,25 @@ export default function ExerciseWorkspace({
       {criteria.type === "sqli_login_bypass" && <SqliLoginSimulator {...simulatorProps} criteria={criteria} />}
  
     
-      {criteria.type === "error_debug_exposure" && (
-        <ErrorDebugExposureSimulator {...simulatorProps} criteria={criteria} />
+     {criteria.type === "fail_open_authz_bypass" && (
+        <FailOpenSimulator {...simulatorProps} criteria={criteria} />
       )}
-      {criteria.type === "session_fixation_hijack" && (
-        <SessionFixationSimulator {...simulatorProps} criteria={criteria} />
+      {criteria.type === "session_fixation_login" && (
+  <SessionFixationLoginSimulator {...simulatorProps} criteria={criteria} />
+)} {criteria.type === "log_injection_forge_entry" && (
+        <LogInjectionSimulator {...simulatorProps} criteria={criteria} />
       )}
       {criteria.type === "stored_xss_comment_injection" && (
         <StoredXssSimulator {...simulatorProps} criteria={criteria} />
       )}
-      {criteria.type === "cookie_theft_via_missing_httponly" && (
-        <CookieTheftSimulator {...simulatorProps} criteria={criteria} />
+     {criteria.type === "ssrf_url_import_simulation" && (
+        <SsrfUrlImportSimulator {...simulatorProps} criteria={criteria} />
+      )}
+      {criteria.type === "xxe_local_file_read" && (
+        <XxeSimulator {...simulatorProps} criteria={criteria} />
+      )}
+      {criteria.type === "unrestricted_file_upload_simulation" && (
+        <FileUploadSimulator {...simulatorProps} criteria={criteria} />
       )}
       {criteria.type === "idor_profile_access" && (
         <IdorProfileSimulator {...simulatorProps} criteria={criteria} />

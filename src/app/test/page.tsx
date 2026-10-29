@@ -1,16 +1,11 @@
-// Save this file as: app/test-supabase/page.tsx
-// Then visit http://localhost:3000/test-supabase in your browser
 
 import { createClient } from '@/../utils/supabase/server'
 
 export default async function TestSupabasePage() {
   const supabase = await createClient()
 
-  // This call will succeed (even with an empty/error result) as long as
-  // the URL + anon key are valid and Supabase is reachable.
   const { data, error } = await supabase.auth.getSession()
 
-  // Also check env vars are actually loaded
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const hasAnonKey = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 

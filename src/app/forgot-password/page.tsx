@@ -1,4 +1,3 @@
-// Save as: app/forgot-password/page.tsx
 
 import Link from "next/link";
 import { requestPasswordReset } from "@/app/auth/actions";

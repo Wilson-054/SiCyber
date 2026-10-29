@@ -1,4 +1,4 @@
-// Save as: app/auth/actions.ts
+
 "use server";
 
 import { revalidatePath } from "next/cache";
@@ -18,8 +18,6 @@ import {
   validatePasswordLength,
 } from "@/../utils/auth-rules";
 
-// Pesan sengaja generik: tidak membedakan "email tidak ada" dengan "kode salah"
-// supaya aksi ini tidak bisa dipakai untuk menebak email yang terdaftar.
 const GENERIC_CODE_ERROR =
   "Kode salah atau sudah kedaluwarsa. Periksa kembali atau minta kode baru.";
 
@@ -42,15 +40,11 @@ export async function signup(formData: FormData) {
   if (passwordProblem) {
     failTo("/signup", passwordProblem);
   }
-
-  // No emailRedirectTo here — email confirmation is turned OFF in the
-  // Supabase dashboard (Authentication > Providers > Email), so this
-  // immediately creates a confirmed, logged-in user.
   const { error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      data: { username }, // read by handle_new_user() trigger
+      data: { username }, 
     },
   });
 
@@ -85,13 +79,6 @@ export async function logout() {
   redirect("/login");
 }
 
-// ---------------------------------------------------------------------------
-// Lupa password (kode OTP lewat email)
-//   1. requestPasswordReset  -> kirim kode ke email
-//   2. verifyResetCode       -> verifikasi kode, buat sesi, set cookie penanda
-//   3. updatePassword        -> ganti password (hanya dengan cookie penanda)
-// ---------------------------------------------------------------------------
-
 export async function requestPasswordReset(formData: FormData) {
   const email = normalizeEmail(formData.get("email"));
 
@@ -102,9 +89,6 @@ export async function requestPasswordReset(formData: FormData) {
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email);
 
-  // Hasilnya TIDAK ditampilkan ke user: jawabannya selalu sama, baik email
-  // terdaftar, tidak terdaftar, maupun gagal kirim. Kegagalan dicatat di log
-  // server saja (cek log Vercel / terminal kalau email tidak pernah datang).
   if (error) {
     console.error("[password-reset] gagal meminta kode:", error.code ?? error.message);
   }
@@ -156,8 +140,6 @@ export async function updatePassword(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Dicek ulang di sini (bukan hanya di middleware): server action bisa
-  // dipanggil langsung tanpa membuka halamannya.
   const cookieStore = await cookies();
   if (!user) {
     failTo("/forgot-password", "Sesi reset password berakhir. Minta kode baru.");
@@ -185,7 +167,6 @@ export async function updatePassword(formData: FormData) {
   }
 
   cookieStore.delete(PW_RESET_COOKIE);
-  // Keluarkan sesi di perangkat lain (mis. kalau akunnya memang sedang dibobol).
   await supabase.auth.signOut({ scope: "others" });
 
   revalidatePath("/", "layout");

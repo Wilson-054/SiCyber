@@ -1,4 +1,3 @@
-// Save as: src/app/materi/[code]/posttest/posttest-client.tsx (MENGGANTIKAN versi lama)
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -7,26 +6,22 @@ import MultipleChoiceQuiz, {
   type ChoiceQuestion,
   type ReviewMap,
 } from "@/../utils/Quiz/multiple-choice-quiz";
-import { MAX_ATTEMPTS, shuffle, type AttemptStatus } from "@/../utils/Quiz/posttest";
+import { shuffle, type AttemptStatus } from "@/../utils/Quiz/quiz";
 import type { AnswerMap } from "@/../utils/Quiz/types";
 import {
   saveDraftAnswers,
-  startPosttest,
-  submitPosttest,
-  type SubmitPosttestSuccess,
+  startQuiz,
+  submitQuiz,
+  type SubmitQuizSuccess,
 } from "./actions";
 
 type Phase = "intro" | "running" | "result";
 type SaveState = "idle" | "saving" | "saved" | "error";
-type PosttestQuestion = ChoiceQuestion & { order_index: number };
+type QuizItemQuestion = ChoiceQuestion & { order_index: number };
 
 const DRAFT_DEBOUNCE_MS = 1000;
 
-// Acak urutan soal DAN urutan opsi. Dilakukan di client setelah Mulai
-// (bukan saat render server), jadi tidak ada hydration mismatch dan tiap
-// percobaan mendapat urutan baru. Draf dikunci pada id soal dan id opsi,
-// jadi urutan acak yang berbeda setelah refresh tidak memengaruhinya.
-function shuffleQuestions(questions: PosttestQuestion[]): PosttestQuestion[] {
+function shuffleQuestions(questions: QuizItemQuestion[]): QuizItemQuestion[] {
   return shuffle(questions).map((q) => ({
     ...q,
     quiz_options: shuffle(q.quiz_options).map((o, i) => ({ ...o, order_index: i })),
@@ -50,8 +45,6 @@ function formatClock(ms: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-// Teks tanggal bergantung zona waktu browser, jadi hanya dirender setelah
-// mount supaya tidak bentrok dengan HTML dari server.
 function useMounted() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -70,6 +63,18 @@ function RegenNote({ status, mounted }: { status: AttemptStatus; mounted: boolea
   );
 }
 
+function AttemptsLeft({ status, mounted }: { status: AttemptStatus; mounted: boolean }) {
+  if (status.maxAttempts == null || status.remaining == null) return null;
+  return (
+    <div className="space-y-1">
+      <p className="text-sm font-medium">
+        Percobaan tersisa: {status.remaining} dari {status.maxAttempts}
+      </p>
+      <RegenNote status={status} mounted={mounted} />
+    </div>
+  );
+}
+
 function SaveIndicator({ state }: { state: SaveState }) {
   if (state === "idle") return null;
   const text =
@@ -81,8 +86,8 @@ function SaveIndicator({ state }: { state: SaveState }) {
   );
 }
 
-export default function PosttestClient({
-  categoryId,
+export default function QuizClient({
+  quizId,
   categoryCode,
   questionCount,
   durationMinutes,
@@ -90,8 +95,9 @@ export default function PosttestClient({
   initialStatus,
   initialHasOpenAttempt,
   alreadyPassed,
+  issuesCertificate,
 }: {
-  categoryId: string;
+  quizId: string;
   categoryCode: string;
   questionCount: number;
   durationMinutes: number;
@@ -99,6 +105,7 @@ export default function PosttestClient({
   initialStatus: AttemptStatus;
   initialHasOpenAttempt: boolean;
   alreadyPassed: boolean;
+  issuesCertificate: boolean;
 }) {
   const mounted = useMounted();
 
@@ -110,7 +117,7 @@ export default function PosttestClient({
   const [error, setError] = useState<string | null>(null);
   const [fatal, setFatal] = useState(false);
 
-  const [questions, setQuestions] = useState<PosttestQuestion[]>([]);
+  const [questions, setQuestions] = useState<QuizItemQuestion[]>([]);
   const [initialAnswers, setInitialAnswers] = useState<AnswerMap>({});
   const [restoredCount, setRestoredCount] = useState(0);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -119,10 +126,10 @@ export default function PosttestClient({
   const [offsetMs, setOffsetMs] = useState(0);
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
   const [locked, setLocked] = useState(false);
-  const [result, setResult] = useState<SubmitPosttestSuccess | null>(null);
+  const [result, setResult] = useState<SubmitQuizSuccess | null>(null);
 
-  // Ref: nilai terbaru yang dibutuhkan timer dan penyimpan draf tanpa
-  // memicu efek ulang.
+  const limited = status.maxAttempts != null;
+
   const answersRef = useRef<AnswerMap>({});
   const submittingRef = useRef(false);
   const autoRef = useRef(false);
@@ -136,19 +143,17 @@ export default function PosttestClient({
     }
   }, []);
 
-  // Simpan draf sekarang juga. Hanya respons dari permintaan TERBARU yang
-  // dipakai untuk memperbarui indikator.
   const flushDraft = useCallback(async () => {
     clearDraftTimer();
     if (submittingRef.current) return;
     const seq = ++saveSeqRef.current;
     setSaveState("saving");
-    const res = await saveDraftAnswers(categoryId, answersRef.current);
+    const res = await saveDraftAnswers(quizId, answersRef.current);
     if (seq !== saveSeqRef.current || submittingRef.current) return;
     if (res.ok) setSaveState("saved");
-    else if (res.attemptClosed) setSaveState("idle"); // timer atau kirim yang mengurus
+    else if (res.attemptClosed) setSaveState("idle");
     else setSaveState("error");
-  }, [categoryId, clearDraftTimer]);
+  }, [quizId, clearDraftTimer]);
 
   const scheduleDraft = useCallback(
     (answers: AnswerMap) => {
@@ -165,22 +170,19 @@ export default function PosttestClient({
     async (answers: AnswerMap, auto: boolean) => {
       if (submittingRef.current) return;
       submittingRef.current = true;
-      // Batalkan draf yang menunggu dan abaikan respons simpan yang masih jalan.
       clearDraftTimer();
       saveSeqRef.current += 1;
       setLocked(true);
       setError(null);
 
-      const res = await submitPosttest(categoryId, answers);
+      const res = await submitQuiz(quizId, answers);
 
       if (!res.ok) {
         setError(res.error);
         if (res.status) setStatus(res.status);
         if (auto || res.attemptClosed) {
-          // Percobaan sudah tidak bisa dikirim ulang dari layar ini.
           setFatal(true);
         } else {
-          // Galat sementara (mis. jaringan): izinkan kirim ulang.
           submittingRef.current = false;
           setLocked(false);
         }
@@ -194,11 +196,9 @@ export default function PosttestClient({
       setPhase("result");
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
-    [categoryId, clearDraftTimer]
+    [quizId, clearDraftTimer]
   );
 
-  // Timer hitung mundur berbasis jam server (offsetMs mengoreksi selisih jam
-  // browser). Saat habis, jawaban yang sudah terisi langsung dikirim.
   useEffect(() => {
     if (phase !== "running" || expiresAtMs == null) return;
 
@@ -215,9 +215,6 @@ export default function PosttestClient({
     const id = setInterval(tick, 500);
     return () => clearInterval(id);
   }, [phase, expiresAtMs, offsetMs, finalize]);
-
-  // Tab disembunyikan (ganti tab, kunci layar, tutup): simpan draf yang masih
-  // menunggu debounce supaya tidak hilang.
   useEffect(() => {
     if (phase !== "running") return;
     const onVisibility = () => {
@@ -235,7 +232,7 @@ export default function PosttestClient({
     setStarting(true);
     setError(null);
 
-    const res = await startPosttest(categoryId);
+    const res = await startQuiz(quizId);
     setStarting(false);
 
     if (!res.ok) {
@@ -289,9 +286,8 @@ export default function PosttestClient({
     );
   }, [result]);
 
-  // ------------------------------------------------------------------ intro
   if (phase === "intro") {
-    const blocked = status.remaining === 0 && !hasOpen;
+    const blocked = status.remaining !== null && status.remaining <= 0 && !hasOpen;
 
     if (blocked) {
       return (
@@ -317,11 +313,19 @@ export default function PosttestClient({
       <div className="space-y-6">
         {passedBefore && (
           <p className="rounded-md border border-[#238636]/40 bg-[#238636]/10 px-4 py-3 text-sm text-[#3FB950]">
-            Kamu sudah lulus dan sertifikatmu sudah ada di{" "}
-            <Link href="/sertifikat" className="underline">
-              Sertifikat Saya
-            </Link>
-            . Percobaan tambahan tetap memakai jatah dan tidak mengubah status lulusmu.
+            Kamu sudah lulus
+            {issuesCertificate && (
+              <>
+                {" "}dan sertifikatmu sudah ada di{" "}
+                <Link href="/sertifikat" className="underline">
+                  Sertifikat Saya
+                </Link>
+              </>
+            )}
+            .{" "}
+            {limited
+              ? "Percobaan tambahan tetap memakai jatah dan tidak mengubah status lulusmu."
+              : "Mengulang tidak mengubah status lulusmu."}
           </p>
         )}
 
@@ -335,8 +339,9 @@ export default function PosttestClient({
             </li>
             <li>Lulus dengan minimal {passMark} dari {questionCount} jawaban benar (80%).</li>
             <li>
-              Satu percobaan terpakai begitu kamu menekan Mulai. Menutup tab atau memuat ulang halaman
-              tidak menghentikan waktu dan tidak mengembalikan percobaan.
+              {limited
+                ? "Satu percobaan terpakai begitu kamu menekan Mulai. Menutup tab atau memuat ulang halaman tidak menghentikan waktu dan tidak mengembalikan percobaan."
+                : "Kamu bisa mengulang kuis ini tanpa batas. Menutup tab atau memuat ulang halaman tidak menghentikan waktu."}
             </li>
             <li>
               Jawabanmu tersimpan otomatis selama mengerjakan. Kalau tab tertutup, kamu bisa melanjutkan
@@ -346,11 +351,8 @@ export default function PosttestClient({
             <li>Jawaban benar dan penjelasannya muncul setelah kamu mengirim.</li>
           </ul>
 
-          <div className="mt-5 space-y-1">
-            <p className="text-sm font-medium">
-              Percobaan tersisa: {status.remaining} dari {MAX_ATTEMPTS}
-            </p>
-            <RegenNote status={status} mounted={mounted} />
+          <div className="mt-5">
+            <AttemptsLeft status={status} mounted={mounted} />
           </div>
 
           {hasOpen && (
@@ -369,7 +371,7 @@ export default function PosttestClient({
               disabled={starting}
               className="rounded-md bg-[#F0883E] px-6 py-2 text-sm font-medium text-[#0D1117] transition hover:bg-[#F0883E]/90 disabled:opacity-60"
             >
-              {starting ? "Menyiapkan…" : hasOpen ? "Lanjutkan percobaan" : "Mulai post-test"}
+              {starting ? "Menyiapkan…" : hasOpen ? "Lanjutkan percobaan" : "Mulai kuis"}
             </button>
             <Link
               href={`/materi/${categoryCode}`}
@@ -383,7 +385,6 @@ export default function PosttestClient({
     );
   }
 
-  // ------------------------------------------------- running dan result
   const lowTime = remainingMs != null && remainingMs <= 5 * 60 * 1000;
 
   return (
@@ -467,11 +468,8 @@ export default function PosttestClient({
             </div>
           )}
 
-          <div className="mt-4 space-y-1">
-            <p className="text-sm text-[#8B949E]">
-              Percobaan tersisa: {result.status.remaining} dari {MAX_ATTEMPTS}
-            </p>
-            <RegenNote status={result.status} mounted={mounted} />
+          <div className="mt-4 text-[#8B949E]">
+            <AttemptsLeft status={result.status} mounted={mounted} />
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
@@ -481,7 +479,7 @@ export default function PosttestClient({
             >
               Kembali ke daftar materi
             </Link>
-            {result.status.remaining > 0 && (
+            {(result.status.remaining === null || result.status.remaining > 0) && (
               <button
                 type="button"
                 onClick={backToIntro}

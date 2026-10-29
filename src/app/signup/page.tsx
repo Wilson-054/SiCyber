@@ -1,4 +1,3 @@
-// Save as: app/signup/page.tsx
 
 import Link from "next/link";
 import { signup } from "@/app/auth/actions";

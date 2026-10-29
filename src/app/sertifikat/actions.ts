@@ -1,4 +1,4 @@
-// Save as: app/sertifikat/actions.ts
+
 "use server";
 
 import { createClient } from "@/../utils/supabase/server";
@@ -26,7 +26,6 @@ export async function updateUsername(rawName: string): Promise<Result> {
     .eq("id", user.id);
 
   if (error) {
-    // 23505 = pelanggaran constraint unique pada profiles.username
     if (error.code === "23505") {
       return { ok: false, error: "Nama ini sudah dipakai pengguna lain." };
     }

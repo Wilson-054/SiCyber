@@ -1,13 +1,13 @@
-// Save as: src/app/materi/[code]/[materialId]/page.tsx
-// Requires: npm install react-markdown remark-gfm
-
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { Children, isValidElement } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { createClient } from "@/../utils/supabase/server";
 import { getCategorySequenceState, itemKey } from "@/../utils/progress-lock";
 import MarkCompleteButton from "@/app/components/Materi/MarkCompleteButton";
+import SimulationEmbedLazy from "@/app/components/Materi/SimulationEmbedLazy";
+import type { SimulationRow } from "@/app/components/Materi/SimulationEmbed";
 
 export const revalidate = 3600;
 
@@ -25,8 +25,6 @@ const DIFFICULTY_LABEL: Record<number, string> = {
   3: "Lanjut",
 };
 
-// Custom renderers so markdown content matches the platform's color tokens
-// without needing the @tailwindcss/typography plugin.
 const markdownComponents = {
   h2: (props: React.ComponentProps<"h2">) => (
     <h2 className="mb-3 mt-8 text-xl font-semibold text-[#E6EDF3]" {...props} />
@@ -61,6 +59,15 @@ const markdownComponents = {
   ),
 };
 
+// True when a <pre> only wraps a ```simulation block, so we can skip the code-box wrapper.
+function isSimBlock(children: React.ReactNode) {
+  const first = Children.toArray(children)[0];
+  return (
+    isValidElement<{ className?: string }>(first) &&
+    !!first.props.className?.includes("language-simulation")
+  );
+}
+
 export default async function MaterialDetailPage({
   params,
 }: {
@@ -92,6 +99,25 @@ export default async function MaterialDetailPage({
   const prev = currentIndex > 0 ? list[currentIndex - 1] : null;
   const next = currentIndex < list.length - 1 ? list[currentIndex + 1] : null;
 
+  // Simulations that belong to this material, looked up by the id written in the marker.
+  const { data: simRows } = await supabase
+    .from("simulations")
+    .select("id, template, config")
+    .eq("material_id", material.id);
+  const simMap = new Map<string, SimulationRow>((simRows ?? []).map((s) => [s.id, s]));
+
+  const components = {
+    ...markdownComponents,
+    pre: (props: React.ComponentProps<"pre">) =>
+      isSimBlock(props.children) ? <>{props.children}</> : markdownComponents.pre(props),
+    code: (props: React.ComponentProps<"code">) =>
+      props.className?.includes("language-simulation") ? (
+        <SimulationEmbedLazy sim={simMap.get(String(props.children).trim())} />
+      ) : (
+        markdownComponents.code(props)
+      ),
+  };
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -101,8 +127,6 @@ export default async function MaterialDetailPage({
   let isLastInCategory = !next;
 
   if (user) {
-    // Lock berbasis order_index (utils/progress-lock.ts). Server-side: URL
-    // langsung ke materi yang masih terkunci dialihkan ke halaman daftar.
     const state = await getCategorySequenceState(supabase, user.id, category.id);
     const key = itemKey("material", material.id);
 
@@ -139,7 +163,7 @@ export default async function MaterialDetailPage({
         </header>
 
         <article>
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
             {material.content}
           </ReactMarkdown>
         </article>
@@ -170,7 +194,7 @@ export default async function MaterialDetailPage({
                 aria-disabled="true"
                 className="max-w-[30%] cursor-not-allowed truncate text-right font-mono text-xs text-[#8B949E] opacity-50"
               >
-                🔒 {next.title}
+                 {next.title}
               </span>
             ) : (
               <Link

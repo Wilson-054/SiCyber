@@ -1,26 +1,16 @@
-// Save as: utils/progress-lock.ts (MENGGANTIKAN versi lama)
-//
-// Aturan lock (satu-satunya sumber kebenaran):
-//   Dalam satu kategori, materi + exercise digabung dan diurutkan berdasarkan
-//   order_index. Item di posisi N terbuka kalau SEMUA item di posisi sebelumnya
-//   sudah selesai. Item yang sudah selesai selalu tetap bisa dibuka lagi.
-//
-// Kalau order_index kembar antara materi dan exercise, urutannya: materi dulu,
-// baru exercise, lalu id sebagai penentu terakhir (supaya hasilnya stabil).
-//
-// prerequisite_material_id TIDAK dipakai sama sekali.
-//
-// POST-TEST (baru): bukan bagian dari `sequence`. Ia SELALU item terakhir di
-// kategori dan terbuka kalau semua item di `sequence` sudah selesai. Disimpan
-// terpisah di `state.posttest` supaya kode lama yang membaca
-// `sequence[sequence.length - 1]` (mis. isLastExercise) tidak berubah arti.
-// "Selesai" = ada minimal satu baris quiz_results (kind 'posttest') dengan
-// skor >= 80%.
+
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { isPassing, POSTTEST_KIND } from "./Quiz/posttest";
+import {
+  getCategoryQuizzes,
+  getPassedQuizIds,
+  getQuizById,
+  type QuizGroup,
+  type QuizMeta,
+} from "./Quiz/quiz";
 
-export type SequenceItemType = "material" | "exercise";
+export type SequenceItemType = "material" | "exercise" | "quiz";
+export type ContentItemType = "material" | "exercise";
 
 export type SequenceItem = {
   type: SequenceItemType;
@@ -29,14 +19,14 @@ export type SequenceItem = {
 };
 
 export type PosttestState = {
-  /** Kategori ini punya soal post-test. */
   available: boolean;
-  /** User pernah lulus (skor >= 80%). Selalu false bila belum login. */
   passed: boolean;
 };
 
 export type CategorySequenceState = {
   sequence: SequenceItem[];
+  quizzes: QuizGroup[];
+  posttestQuiz: QuizGroup | null;
   completedKeys: Set<string>;
   unlockedKeys: Set<string>;
   posttest: PosttestState & { unlocked: boolean };
@@ -45,30 +35,34 @@ export type CategorySequenceState = {
 export const LOCKED_MESSAGE =
   "Item ini masih terkunci. Selesaikan item sebelumnya terlebih dahulu.";
 
+const TYPE_RANK: Record<SequenceItemType, number> = {
+  material: 0,
+  exercise: 1,
+  quiz: 2,
+};
+
 export function itemKey(type: SequenceItemType, id: string): string {
   return `${type}-${id}`;
 }
 
+export function quizKey(quizId: string): string {
+  return itemKey("quiz", quizId);
+}
+
 export function buildSequence(
   materials: { id: string; order_index: number }[],
-  exercises: { id: string; order_index: number }[]
+  exercises: { id: string; order_index: number }[],
+  quizzes: { id: string; order_index: number }[] = []
 ): SequenceItem[] {
   const items: SequenceItem[] = [
-    ...materials.map((m) => ({
-      type: "material" as const,
-      id: m.id,
-      order_index: m.order_index,
-    })),
-    ...exercises.map((e) => ({
-      type: "exercise" as const,
-      id: e.id,
-      order_index: e.order_index,
-    })),
+    ...materials.map((m) => ({ type: "material" as const, id: m.id, order_index: m.order_index })),
+    ...exercises.map((e) => ({ type: "exercise" as const, id: e.id, order_index: e.order_index })),
+    ...quizzes.map((q) => ({ type: "quiz" as const, id: q.id, order_index: q.order_index })),
   ];
 
   return items.sort((a, b) => {
     if (a.order_index !== b.order_index) return a.order_index - b.order_index;
-    if (a.type !== b.type) return a.type === "material" ? -1 : 1;
+    if (a.type !== b.type) return TYPE_RANK[a.type] - TYPE_RANK[b.type];
     return a.id.localeCompare(b.id);
   });
 }
@@ -91,7 +85,6 @@ export function computeUnlockedKeys(
   return unlocked;
 }
 
-/** True bila semua item di sequence sudah selesai (syarat membuka post-test). */
 export function isSequenceComplete(
   sequence: SequenceItem[],
   completedKeys: Set<string>
@@ -99,36 +92,18 @@ export function isSequenceComplete(
   return sequence.every((it) => completedKeys.has(itemKey(it.type, it.id)));
 }
 
-// userId boleh null (belum login): `available` tetap dihitung, `passed` false.
 export async function getPosttestState(
   supabase: SupabaseClient,
   userId: string | null,
   categoryId: string
 ): Promise<PosttestState> {
-  const questionsReq = supabase
-    .from("quiz_questions")
-    .select("id", { count: "exact", head: true })
-    .eq("category_id", categoryId)
-    .eq("kind", POSTTEST_KIND);
+  const { posttest } = await getCategoryQuizzes(supabase, categoryId);
+  if (!posttest) return { available: false, passed: false };
 
-  const resultsReq = userId
-    ? supabase
-        .from("quiz_results")
-        .select("score, total")
-        .eq("user_id", userId)
-        .eq("category_id", categoryId)
-        .eq("kind", POSTTEST_KIND)
-    : Promise.resolve({ data: [] as { score: number | null; total: number | null }[], error: null });
-
-  const [questionsRes, resultsRes] = await Promise.all([questionsReq, resultsReq]);
-
-  if (questionsRes.error) throw new Error(questionsRes.error.message);
-  if (resultsRes.error) throw new Error(resultsRes.error.message);
-
-  return {
-    available: (questionsRes.count ?? 0) > 0,
-    passed: (resultsRes.data ?? []).some((r) => isPassing(r.score, r.total)),
-  };
+  const passedIds = userId
+    ? await getPassedQuizIds(supabase, userId, categoryId)
+    : new Set<string>();
+  return { available: true, passed: passedIds.has(posttest.id) };
 }
 
 export async function getCategorySequenceState(
@@ -136,7 +111,7 @@ export async function getCategorySequenceState(
   userId: string,
   categoryId: string
 ): Promise<CategorySequenceState> {
-  const [materialsRes, exercisesRes, progressRes, posttest] = await Promise.all([
+  const [materialsRes, exercisesRes, progressRes, quizData, passedQuizIds] = await Promise.all([
     supabase.from("materials").select("id, order_index").eq("category_id", categoryId),
     supabase.from("exercises").select("id, order_index").eq("category_id", categoryId),
     supabase
@@ -144,16 +119,16 @@ export async function getCategorySequenceState(
       .select("material_id, material_completed, exercise_id, exercise_status")
       .eq("user_id", userId)
       .eq("category_id", categoryId),
-    getPosttestState(supabase, userId, categoryId),
+    getCategoryQuizzes(supabase, categoryId),
+    getPassedQuizIds(supabase, userId, categoryId),
   ]);
 
-  // Kalau query gagal, lebih baik error daripada diam-diam mengunci/membuka
-  // semua item.
   if (materialsRes.error) throw new Error(materialsRes.error.message);
   if (exercisesRes.error) throw new Error(exercisesRes.error.message);
   if (progressRes.error) throw new Error(progressRes.error.message);
 
-  const sequence = buildSequence(materialsRes.data ?? [], exercisesRes.data ?? []);
+  const { quizzes, posttest } = quizData;
+  const sequence = buildSequence(materialsRes.data ?? [], exercisesRes.data ?? [], quizzes);
 
   const completedKeys = new Set<string>();
   for (const row of progressRes.data ?? []) {
@@ -164,25 +139,28 @@ export async function getCategorySequenceState(
       completedKeys.add(itemKey("exercise", row.exercise_id));
     }
   }
+  for (const q of quizzes) {
+    if (passedQuizIds.has(q.id)) completedKeys.add(quizKey(q.id));
+  }
 
   return {
     sequence,
+    quizzes,
+    posttestQuiz: posttest,
     completedKeys,
     unlockedKeys: computeUnlockedKeys(sequence, completedKeys),
     posttest: {
-      ...posttest,
-      unlocked: posttest.available && isSequenceComplete(sequence, completedKeys),
+      available: posttest != null,
+      passed: posttest != null && passedQuizIds.has(posttest.id),
+      unlocked: posttest != null && isSequenceComplete(sequence, completedKeys),
     },
   };
 }
 
-// Dipakai di server action. category_id dicari dari database (bukan dari
-// parameter client) supaya tidak bisa dipalsukan, lalu dikembalikan supaya
-// pemanggil bisa memakainya saat menyimpan progres.
 export async function assertItemUnlocked(
   supabase: SupabaseClient,
   userId: string,
-  type: SequenceItemType,
+  type: ContentItemType,
   id: string
 ): Promise<string> {
   const table = type === "material" ? "materials" : "exercises";
@@ -201,4 +179,32 @@ export async function assertItemUnlocked(
   }
 
   return item.category_id as string;
+}
+
+export type QuizAccess =
+  | { status: "not_found" }
+  | { status: "locked"; quiz: QuizMeta }
+  | { status: "ok"; quiz: QuizMeta; passed: boolean };
+
+export async function getQuizAccess(
+  supabase: SupabaseClient,
+  userId: string,
+  quizId: string
+): Promise<QuizAccess> {
+  const quiz = await getQuizById(supabase, quizId);
+  if (!quiz || (quiz.kind !== "quiz" && quiz.kind !== "posttest")) return { status: "not_found" };
+
+  const state = await getCategorySequenceState(supabase, userId, quiz.category_id);
+  const isPosttest = quiz.kind === "posttest";
+
+  const known = isPosttest
+    ? state.posttestQuiz?.id === quiz.id
+    : state.quizzes.some((q) => q.id === quiz.id);
+  if (!known) return { status: "not_found" };
+
+  const unlocked = isPosttest ? state.posttest.unlocked : state.unlockedKeys.has(quizKey(quiz.id));
+  if (!unlocked) return { status: "locked", quiz };
+
+  const passed = isPosttest ? state.posttest.passed : state.completedKeys.has(quizKey(quiz.id));
+  return { status: "ok", quiz, passed };
 }

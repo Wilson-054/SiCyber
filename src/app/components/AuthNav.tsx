@@ -1,6 +1,3 @@
-// Save as: app/components/AuthNav.tsx
-// Drop <AuthNav /> into your app/layout.tsx header. It's a Server
-// Component, so it reads the session directly — no client-side flicker.
 
 import Link from "next/link";
 import { createClient } from '@/../utils/supabase/server'

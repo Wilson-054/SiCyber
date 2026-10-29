@@ -1,11 +1,9 @@
-  // Save as: app/materi/page.tsx
-  // Requires utils/supabase/server.ts already set up in your project.
 
   import Link from "next/link";
   import { createClient } from '@/../utils/supabase/server'
   import { logout } from "@/app/auth/actions";
 
-  export const revalidate = 3600; // categories rarely change — SSG-friendly
+  export const revalidate = 3600;
 
   type Category = {
     id: string;

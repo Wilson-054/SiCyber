@@ -1,13 +1,15 @@
-// Save as: src/app/materi/[code]/exercise/[slug]/page.tsx
+
 
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/../utils/supabase/server";
 import { getCategorySequenceState, itemKey } from "@/../utils/progress-lock";
 import ExerciseWorkspace from "@/../utils/Quiz/exercise-workspace";
-import type { SqliLoginCriteria } from "../../../../../../utils/Quiz/A05/Sql/sqli-evaluator";
 import type { ExerciseCriteria } from "@/../utils/Quiz/types";
 const DIFFICULTY_LABEL: Record<number, string> = { 1: "Dasar", 2: "Menengah", 3: "Lanjut" };
+import { Children, isValidElement } from "react";
+import SimulationEmbedLazy from "@/app/components/Materi/SimulationEmbedLazy";
+import type { SimulationRow } from "@/app/components/Materi/SimulationEmbed";
 
 export default async function ExerciseDetailPage({
   params,
@@ -36,9 +38,6 @@ export default async function ExerciseDetailPage({
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Lock berbasis order_index (utils/progress-lock.ts). Server-side: URL
-  // langsung ke exercise yang masih terkunci dialihkan ke halaman daftar.
-  // "Exercise terakhir" = item terakhir di urutan gabungan materi + exercise.
   let isLastExercise = false;
   if (user) {
     const state = await getCategorySequenceState(supabase, user.id, category.id);
@@ -51,8 +50,6 @@ export default async function ExerciseDetailPage({
     const last = state.sequence[state.sequence.length - 1];
     isLastExercise = !!last && itemKey(last.type, last.id) === key;
   } else {
-    // Belum login: tidak ada progres untuk dikunci, jadi cukup cek urutan
-    // exercise saja seperti sebelumnya.
     const { data: allExercises } = await supabase
       .from("exercises")
       .select("id, order_index")

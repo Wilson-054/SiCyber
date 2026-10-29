@@ -1,7 +1,3 @@
-// Save as: app/new-password/page.tsx
-//
-// Halaman ini dijaga middleware.ts DAN aksi updatePassword: hanya bisa dibuka
-// tepat setelah kode reset diverifikasi (cookie penanda, berlaku 10 menit).
 
 import { updatePassword } from "@/app/auth/actions";
 import { MIN_PASSWORD_LENGTH } from "@/../utils/auth-rules";

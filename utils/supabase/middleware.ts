@@ -1,4 +1,3 @@
-// src/utils/supabase/middleware.ts
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
@@ -26,10 +25,11 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // Refreshes the session if expired
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // Refreshes the session if expired, verifies the JWT locally
+  // (no network call if the project uses asymmetric JWT signing keys)
+  const { data } = await supabase.auth.getClaims()
+  const claims = data?.claims
+  const user = claims ? { id: claims.sub } : null
 
   return { supabaseResponse, supabase, user }
 }
